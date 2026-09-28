@@ -205,20 +205,44 @@
   document.querySelectorAll("#layers button").forEach(function (b) {
     b.onclick = function () {
       var on = b.getAttribute("aria-pressed") !== "true", l = b.dataset.l; b.setAttribute("aria-pressed", on);
-      if (on) { map.addLayer(G[l]); if (l === "radar") loadRadar(); } else map.removeLayer(G[l]);
+      if (on) { map.addLayer(G[l]); if (l === "radar") loadRadar(); } else { map.removeLayer(G[l]); if (l === "radar") { stopRadar(); $("radarBar").hidden = true; } }
     };
   });
-  function loadRadar() {
-    fetch("https://api.rainviewer.com/public/weather-maps.json").then(function (r) { return r.json(); }).then(function (m) {
-      var f = m.radar && m.radar.past && m.radar.past[m.radar.past.length - 1]; if (!f) return;
-      G.radar.clearLayers();
-      L.tileLayer(m.host + f.path + "/256/{z}/{x}/{y}/2/1_1.png", { opacity: .55, maxNativeZoom: 7, maxZoom: 19, attribution: "Radar © RainViewer" }).addTo(G.radar);
-    }).catch(function () { card('<span class="t">โหลดเรดาร์ฝนไม่สำเร็จ</span>'); });
+  /* ---------- rain radar (RainViewer, past ~2 h, animated) ---------- */
+  var RF = [], RL = [], ri = 0, rTimer = null;
+  function rTime(t) { return new Date(t * 1000).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }) + " น."; }
+  function showFrame(i) {
+    if (!RL.length) return;
+    ri = i; RL.forEach(function (l, k) { l.setOpacity(k === i ? .65 : 0); });
+    $("rSlider").value = i;
+    var last = RF[RF.length - 1].time, mins = Math.round((last - RF[i].time) / 60);
+    $("rTime").textContent = rTime(RF[i].time) + (i === RF.length - 1 ? " · ล่าสุด" : " · ก่อนล่าสุด " + mins + " นาที");
   }
+  function stopRadar() { if (rTimer) { clearInterval(rTimer); rTimer = null; } $("rPlay").textContent = "▶ เล่น"; }
+  function playRadar() {
+    if (rTimer) { stopRadar(); return; }
+    rTimer = setInterval(function () { showFrame((ri + 1) % RL.length); }, 700);
+    $("rPlay").textContent = "❚❚ หยุด";
+  }
+  function loadRadar() {
+    $("radarBar").hidden = false;
+    fetch("https://api.rainviewer.com/public/weather-maps.json").then(function (r) { return r.json(); }).then(function (m) {
+      var fr = [].concat((m.radar && m.radar.past) || [], (m.radar && m.radar.nowcast) || []); if (!fr.length) return;
+      var playing = !!rTimer; stopRadar();
+      G.radar.clearLayers();
+      RF = fr;
+      RL = fr.map(function (f) { return L.tileLayer(m.host + f.path + "/256/{z}/{x}/{y}/2/1_1.png", { opacity: 0, maxNativeZoom: 7, maxZoom: 19, attribution: "Radar © RainViewer" }).addTo(G.radar); });
+      $("rSlider").max = fr.length - 1;
+      showFrame(fr.length - 1);
+      if (playing) playRadar();
+    }).catch(function () { $("rTime").textContent = "โหลดเรดาร์ฝนไม่สำเร็จ"; });
+  }
+  $("rPlay").onclick = playRadar;
+  $("rSlider").oninput = function () { stopRadar(); showFrame(+this.value); };
   $("reload").onclick = load;
 
   showHome();
   load();
-  setInterval(function () { if (!document.hidden) load(); }, C.refresh_min * 60000);
+  setInterval(function () { if (!document.hidden) { load(); if (map.hasLayer(G.radar)) loadRadar(); } }, C.refresh_min * 60000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden && S && (Date.now() - new Date(S.generated_at).getTime()) > C.refresh_min * 60000) load(); });
 })();

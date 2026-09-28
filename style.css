@@ -93,5 +93,12 @@ a.btn small{color:var(--muted);font-size:12px;line-height:1.4}
 .ph .num{font-family:"IBM Plex Mono",monospace;font-size:22px;color:var(--accent)}
 .ph small{color:var(--muted);font-size:12px;line-height:1.3}
 .note{color:var(--muted);font-size:12px;margin:6px 0 0}
+.radarbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:13px}
+.radarbar[hidden]{display:none}
+.radarbar button{font:inherit;font-size:13px;background:var(--accent);color:var(--accent-ink);border:none;border-radius:99px;padding:4px 12px;cursor:pointer}
+.radarbar input[type=range]{flex:1 1 140px;accent-color:var(--accent)}
+.radarbar .rtime{min-width:9em}
+.rlegend{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.rlegend i{display:inline-block;width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,#88ddee,#0099cc,#0077aa,#ffee00,#ffaa00,#ff4400,#c10000)}
 @media (max-width:420px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
