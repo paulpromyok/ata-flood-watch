@@ -21,5 +21,6 @@ window.FW_CONFIG = {
   // Longdo Map API key (api.longdo.com/console). Enables Longdo rain radar (zoom 9, 15-min),
   // rain now / +15 / +30 min at the office, and cameras where it is raining. Leave "" to use RainViewer.
   // In the Longdo console, limit this key's Domain to ata-flood-watch.vercel.app.
-  longdo_key: ""
+  longdo_key: "59937ebbe7feb21f5aeb31b3ff2e99b0"
 };
+
