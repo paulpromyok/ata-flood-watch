@@ -80,8 +80,9 @@
   function j(url) { return fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error(url + " " + r.status); return r.json(); }); }
   function load() {
     return Promise.all([j(BASE + "latest.json"), j(BASE + "traffy.json").catch(function () { return { reports: [] }; }), j(BASE + "road_status.json").catch(function () { return null; }),
-      CANALS ? Promise.resolve(CANALS) : j(BASE + "canals.geojson"), DISTS ? Promise.resolve(DISTS) : j(BASE + "districts.geojson")])
-      .then(function (r) { S = r[0]; TR = r[1] || { reports: [] }; RS = r[2]; CANALS = r[3]; DISTS = r[4]; EVL = {}; if (RS) RS.events.forEach(function (x) { EVL[x.id] = x; }); render(); })
+      CANALS ? Promise.resolve(CANALS) : j(BASE + "canals.geojson"), DISTS ? Promise.resolve(DISTS) : j(BASE + "districts.geojson"),
+      j(BASE + "outlook.json").catch(function () { return null; })])
+      .then(function (r) { S = r[0]; TR = r[1] || { reports: [] }; RS = r[2]; CANALS = r[3]; DISTS = r[4]; OL = r[5]; EVL = {}; if (RS) RS.events.forEach(function (x) { EVL[x.id] = x; }); render(); renderOutlook(); })
       .catch(function (e) { $("stamp").textContent = "โหลดข้อมูลไม่สำเร็จ ลองกดโหลดใหม่"; $("stamp").className = "stamp old"; console.error(e); });
   }
 
@@ -188,6 +189,44 @@
           .addTo(rainCams);
       });
     }).catch(function () {});
+  }
+
+  /* ---------- canal outlook 12/24/48 h (BKK FloodWatch 2026, via data/outlook.json) ---------- */
+  var OL = null;
+  var RISK_TH = { high: "เสี่ยงสูง", moderate: "เสี่ยงปานกลาง", low: "เสี่ยงต่ำ" };
+  var OST = { overbank: "ล้นตลิ่ง", critical: "เกินวิกฤต", warning: "เฝ้าระวัง", normal: "ปกติ" };
+  function cm(v) { return v == null ? "?" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v * 100)); }
+  function trendCell(label, c) {
+    if (!c) return "<div><b>" + label + "</b>–</div>";
+    var lk = c.likely || c.range90 || [], rng = lk.length === 2 ? cm(lk[0]) + " ถึง " + cm(lk[1]) + " ซม." : "";
+    // show a direction only where a tested model beat "no change" (their rule): not persistence, not unproven, not low confidence
+    var sure = c.method && c.method !== "persistence" && c.proven !== false && c.confidence !== "low";
+    var dir = !sure ? '<span class="un">? ไม่แน่ชัด</span>' : c.dir === "rising" || c.dir === "up" ? '<span class="up">↑ ขึ้น</span>' : c.dir === "falling" || c.dir === "down" ? '<span class="dn">↓ ลง</span>' : '<span class="st">→ ทรงตัว</span>';
+    return "<div><b>" + label + "</b>" + dir + "<br>" + rng + "</div>";
+  }
+  function renderOutlook() {
+    var sec = $("outlook");
+    if (!OL || !OL.gauges) { sec.hidden = true; return; }
+    var age = (Date.now() - new Date(OL.fetched_at).getTime()) / 3600000, p = OL.point || {};
+    var gs = OL.gauges.filter(function (g) { return !g.stale && g.level != null && g.km <= C.summary_km; }).slice(0, 6);
+    if (!gs.length && !p.title) { sec.hidden = true; return; }
+    sec.hidden = false;
+    $("olBody").innerHTML =
+      (p.title ? '<div class="olhead"><span class="t">' + (p.risk ? '<span class="pill rk-' + esc(p.risk) + '">' + esc(RISK_TH[p.risk] || p.risk) + "</span> " : "") + esc(p.title) + "</span>" +
+        (p.desc ? "<span>" + esc(p.desc) + "</span>" : "") +
+        '<span class="m">ฝน 24 ชม. ข้างหน้า ~' + (p.rain_next24_mm != null ? (+p.rain_next24_mm).toFixed(0) : "?") + " มม." + (p.traffy_1km_6h != null ? " · แจ้งน้ำขังใน 1 กม. (6 ชม.) " + p.traffy_1km_6h + " เรื่อง" : "") + "</span></div>" : "") +
+      gs.map(function (g, i) {
+        var now = g.over_crit != null && g.over_crit > 0 ? "เกินระดับวิกฤต กทม. " + cm(g.over_crit) + " ซม." : g.freeboard != null ? (g.freeboard >= 0 ? "ต่ำกว่าตลิ่ง " + Math.round(g.freeboard * 100) + " ซม." : "สูงกว่าตลิ่ง " + Math.round(-g.freeboard * 100) + " ซม.") : "";
+        return '<button type="button" class="olg" data-i="' + i + '"><div class="top"><span class="nm">' + esc(g.name) + '</span><span class="now">' + g.km.toFixed(1) + " กม. · " +
+          (g.status && OST[g.status] ? '<span class="pill lv-' + ({ overbank: "severe", critical: "warning", warning: "watch", normal: "normal" })[g.status] + '">' + OST[g.status] + "</span> " : "") + esc(now) + "</span></div>" +
+          '<div class="olh">' + trendCell("ใน 12 ชม.", g.c12) + trendCell("ใน 24 ชม.", g.c24) + trendCell("ใน 48 ชม.", g.c48) + "</div></button>";
+      }).join("") +
+      '<p class="olnote">ช่วงตัวเลข = ช่วงที่น่าจะเป็นของการเปลี่ยนแปลงระดับน้ำ · "ไม่แน่ชัด" = แบบจำลองยังทำได้ไม่ดีกว่าการสมมติว่าน้ำคงที่ ณ จุดนั้น · ' +
+        'พยากรณ์จาก <a href="' + esc(OL.source_url) + '" target="_blank" rel="noopener">BKK FloodWatch 2026</a> (MIT) ข้อมูล สสน./กทม. · ดึงเมื่อ ' + dm(new Date(new Date(OL.fetched_at).getTime() + 7 * 3600000).toISOString()) +
+        (age > 3 ? ' · <b>ข้อมูลพยากรณ์เก่า ' + Math.round(age) + " ชม.</b>" : "") + "</p>";
+    $("olBody").querySelectorAll(".olg").forEach(function (b) {
+      b.onclick = function () { var g = gs[+b.dataset.i]; map.setView([g.lat, g.lon], 15); $("map").scrollIntoView({ behavior: "smooth", block: "center" }); };
+    });
   }
 
   /* ---------- province list ---------- */
