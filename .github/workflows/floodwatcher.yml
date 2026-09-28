@@ -44,7 +44,9 @@ jobs:
             git pull -q --rebase origin "${GITHUB_REF_NAME}" || git rebase --abort || true
             if python fetch_data.py && python scripts/check_data.py; then
               python scripts/build_road_status.py || echo "::warning::road status failed"
+              python scripts/fetch_outlook.py || echo "::warning::outlook failed"
               git add data/latest.json data/traffy.json data/road_status.json
+              [ -f data/outlook.json ] && git add data/outlook.json
               if ! git diff --cached --quiet; then
                 git commit -q -m "data: $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
                 for i in 1 2 3; do
