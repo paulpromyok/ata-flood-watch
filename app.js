@@ -109,7 +109,7 @@
     tr.filter(function (t) { return t.km <= C.traffy_km; }).forEach(function (t) {
       L.circleMarker([t.lat, t.lon], { radius: 4, color: COL.traffy, weight: 0, fillColor: COL.traffy, fillOpacity: .55 }).on("click", function () { showTf(t); }).addTo(G.tf);
     });
-    gauges.sort(function (a, b) { return ST[a.st] - ST[b.st]; }).forEach(function (s) {
+    gauges.filter(function (s) { return ST[s.st] >= 2; }).sort(function (a, b) { return ST[a.st] - ST[b.st]; }).forEach(function (s) {
       L.circleMarker([s.lat, s.lon], { radius: ST[s.st] >= 3 ? 7 : 5, color: "#fff", weight: 1.5, fillColor: COL[s.st], fillOpacity: s.stale ? .5 : 1 }).on("click", function () { showGauge(s); }).addTo(G.gauge);
     });
     (S.events || []).forEach(function (e) {
@@ -141,10 +141,10 @@
   }
 
   /* ---------- province list ---------- */
-  var curP = PROVS[0], sortBy = "near", openSet = {}; openSet[H.district] = true;
+  var curP = PROVS[0], sortBy = "near", showNormal = false, openSet = {}; openSet[H.district] = true;
   PROVS.forEach(function (p) {
-    var b = document.createElement("button"); b.type = "button"; b.textContent = p === "กรุงเทพมหานคร" ? "กรุงเทพฯ" : p; b.setAttribute("aria-pressed", p === curP);
-    b.onclick = function () { curP = p; $("provTabs").querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); renderList(); };
+    var b = document.createElement("button"); b.type = "button"; b.dataset.p = p; b.dataset.label = p === "กรุงเทพมหานคร" ? "กรุงเทพฯ" : p; b.textContent = b.dataset.label; b.setAttribute("aria-pressed", p === curP);
+    b.onclick = function () { curP = p; showNormal = false; $("provTabs").querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); renderList(); };
     $("provTabs").appendChild(b);
   });
   $("sNear").onclick = function () { sortBy = "near"; this.setAttribute("aria-pressed", true); $("sSev").setAttribute("aria-pressed", false); renderList(); };
@@ -152,13 +152,16 @@
 
   function renderList() {
     if (!S) return;
-    var ds = S.districts.filter(function (d) { return d.province === curP; });
+    var all = S.districts.filter(function (d) { return d.province === curP; });
+    var nNormal = all.filter(function (d) { return d.level === "normal"; }).length;
+    var ds = showNormal ? all : all.filter(function (d) { return d.level !== "normal"; });
+    $("provTabs").querySelectorAll("button").forEach(function (b) { var n = S.districts.filter(function (d) { return d.province === b.dataset.p && d.level !== "normal"; }).length; b.textContent = b.dataset.label + " (" + n + ")"; });
     ds.sort(sortBy === "near" ? function (a, b) { return a.km - b.km; } : function (a, b) { return (LV[b.level] - LV[a.level]) || (b.score - a.score) || (a.km - b.km); });
     var el = $("dlist"); el.innerHTML = "";
     ds.forEach(function (d) {
       var hotG = d.g.filter(function (x) { return ST[x.st] >= 3 && !x.stale; }).length, rn = S._rain[d.id];
       var ev = [];["measured", "forecast", "reported", "confirmed"].forEach(function (k) { (d.evidence[k] || []).forEach(function (x) { if (x.points > 0 || k === "measured") ev.push(x.text); }); });
-      var gs = d.g.slice().sort(function (a, b) { return ST[b.st] - ST[a.st]; });
+      var gs = d.g.filter(function (x) { return ST[x.st] >= 2; }).sort(function (a, b) { return ST[b.st] - ST[a.st]; }), gOk = d.g.length - gs.length;
       var tfs = S._tr.filter(function (t) { return t.district === d.id; }).sort(function (a, b) { return a.time < b.time ? 1 : -1; }).slice(0, 5);
       var det = document.createElement("details"); det.className = "d"; det.open = !!openSet[d.id];
       det.addEventListener("toggle", function () { openSet[d.id] = det.open; });
@@ -168,7 +171,7 @@
         (ev.length ? "<div><h3>หลักฐาน</h3><ul>" + ev.slice(0, 6).map(function (x) { return "<li>" + esc(x.length > 240 ? x.slice(0, 240) + "…" : x) + "</li>"; }).join("") + "</ul></div>" : "") +
         (rn ? '<div class="m">ฝนสะสม 24 ชม. สูงสุด <span class="mono">' + rn[0] + "</span> มม. ที่ " + esc(rn[1]) + "</div>" : "") +
         (gs.length ? '<div><h3>จุดวัดระดับน้ำ</h3><div class="tbl"><table><thead><tr><th>จุด</th><th class="num">น้ำ</th><th class="num">ตลิ่ง</th><th>สถานะ</th></tr></thead><tbody>' +
-          gs.map(function (x) { return "<tr><td>" + esc(x.name) + "<br><small>" + esc(x.canal || "") + " · " + hm(x.time) + (x.stale ? " ค่าเก่า" : "") + '</small></td><td class="num">' + f2(x.value) + '</td><td class="num">' + f2(x.bank) + '</td><td class="st-' + x.st + '">' + STTH[x.st] + "</td></tr>"; }).join("") + "</tbody></table></div></div>" : "") +
+          gs.map(function (x) { return "<tr><td>" + esc(x.name) + "<br><small>" + esc(x.canal || "") + " · " + hm(x.time) + (x.stale ? " ค่าเก่า" : "") + '</small></td><td class="num">' + f2(x.value) + '</td><td class="num">' + f2(x.bank) + '</td><td class="st-' + x.st + '">' + STTH[x.st] + "</td></tr>"; }).join("") + "</tbody></table></div>" + (gOk ? '<div class="m">จุดวัดน้ำปกติ/ไม่มีเกณฑ์อีก ' + gOk + " จุด ไม่แสดง</div>" : "") + "</div>" : "") +
         (d.e.length ? "<div><h3>น้ำท่วมบนถนน (Longdo / iTIC / กรมทางหลวง)</h3><ul>" + d.e.slice().sort(function (a, b) { return a.start < b.start ? 1 : -1; }).map(function (x) { return "<li>" + esc(x.title) + (x.depth_cm ? " · ลึก " + x.depth_cm + " ซม." : "") + " <small>" + hm(x.start) + " · " + esc(x.source) + "</small></li>"; }).join("") + "</ul></div>" : "") +
         (d.c.length ? "<div><h3>กล้อง</h3><ul>" + d.c.map(function (x) { return '<li><a href="' + esc(x.link) + '" target="_blank" rel="noopener">' + esc(x.title) + "</a> <small>" + esc(x.org) + "</small></li>"; }).join("") + "</ul></div>" : "") +
         (tfs.length ? "<div><h3>Traffy ล่าสุด</h3><ul>" + tfs.map(function (x) { return '<li><a href="' + esc((TR.link_base || "") + x.id) + '" target="_blank" rel="noopener">' + esc((x.text || "").slice(0, 90)) + "…</a> <small>" + hm(x.time) + " · " + esc(TFTH[x.state] || x.state) + "</small></li>"; }).join("") + "</ul></div>" : "") +
@@ -178,6 +181,8 @@
       det.querySelector(".body").appendChild(btn);
       el.appendChild(det);
     });
+    if (!ds.length) { var em = document.createElement("p"); em.className = "note"; em.textContent = "ไม่มีเขตที่ผิดปกติในจังหวัดนี้"; el.appendChild(em); }
+    if (nNormal) { var tg = document.createElement("button"); tg.type = "button"; tg.className = "maplink"; tg.textContent = showNormal ? "ซ่อนเขตปกติ" : "แสดงเขตปกติอีก " + nNormal + " เขต"; tg.onclick = function () { showNormal = !showNormal; renderList(); }; el.appendChild(tg); }
   }
 
   /* ---------- controls ---------- */
