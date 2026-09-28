@@ -37,7 +37,11 @@
     .on("click", showHome).addTo(map);
   L.marker([H.lat, H.lon], { interactive: false, icon: L.divIcon({ className: "", html: '<span class="fw-ata-lbl">' + esc(H.short) + "</span>", iconSize: [40, 14], iconAnchor: [20, 26] }) }).addTo(map);
 
-  var info = $("info"), S = null, DM = {}, TR = { reports: [] }, CANALS = null, DISTS = null, meMarker = null;
+  var info = $("info"), S = null, DM = {}, TR = { reports: [] }, CANALS = null, DISTS = null, meMarker = null, RS = null, EVL = {}, sevMin = 3;
+  var RLV = { 4: "ผ่านไม่ได้", 3: "วิกฤต", 2: "ท่วมขัง", 1: "ผ่านได้" };
+  var RCOL = { 4: "#7a0010", 3: COL.overbank, 2: COL.critical, 1: COL.warning };
+  function evLevel(e) { var x = EVL[e.id]; return x ? x.level : (e.color === "red" ? 3 : e.color === "green" ? 1 : 2); }
+  function rpill(lv) { return '<span class="pill rl-' + lv + '">' + RLV[lv] + "</span>"; }
   function card(html) { info.innerHTML = html; }
   function lk(lat, lon, extra) { return '<span class="links"><a href="' + gmaps(lat, lon) + '" target="_blank" rel="noopener">Google Maps จราจร</a>' + (extra || "") + "</span>"; }
   function showHome() {
@@ -51,8 +55,9 @@
       '<span class="m">วัดเมื่อ ' + dm(d.time) + (d.stale ? " · ค่าเก่า" : "") + "</span>" + lk(d.lat, d.lon));
   }
   function showEvent(d) {
-    card('<span class="t">' + esc(d.title) + '</span><span class="m">' + esc(d.text) + '</span><span class="m">' + dm(d.start) + " · " + esc(d.source) +
-      (d.depth_cm ? " · ลึก " + d.depth_cm + " ซม." : "") + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) + "</span>" + lk(d.lat, d.lon));
+    var x = EVL[d.id] || {}, dep = x.depth_cm || d.depth_cm;
+    card('<span class="t">' + rpill(evLevel(d)) + " " + esc(d.title) + '</span><span class="m">' + esc(d.text) + '</span><span class="m">' + dm(d.start) + " · " + esc(d.source) + (d.official ? " (ยืนยัน)" : " (ประชาชนแจ้ง)") +
+      (dep ? " · ลึก ~" + dep + " ซม." : "") + (x.uturn ? " · เฉพาะจุดกลับรถ" : "") + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) + "</span>" + lk(d.lat, d.lon));
   }
   function showCam(d) {
     card('<span class="t">กล้อง: ' + esc(d.title) + '</span><span class="m">' + esc(d.org) + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) + (d.live ? "" : " · อาจไม่ออนไลน์") + "</span>" +
@@ -74,9 +79,9 @@
   if (BASE === "data/" && C.data_base) console.warn("config.js: set data_base (replace OWNER) so data stays fresh on Vercel");
   function j(url) { return fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error(url + " " + r.status); return r.json(); }); }
   function load() {
-    return Promise.all([j(BASE + "latest.json"), j(BASE + "traffy.json").catch(function () { return { reports: [] }; }),
+    return Promise.all([j(BASE + "latest.json"), j(BASE + "traffy.json").catch(function () { return { reports: [] }; }), j(BASE + "road_status.json").catch(function () { return null; }),
       CANALS ? Promise.resolve(CANALS) : j(BASE + "canals.geojson"), DISTS ? Promise.resolve(DISTS) : j(BASE + "districts.geojson")])
-      .then(function (r) { S = r[0]; TR = r[1] || { reports: [] }; CANALS = r[2]; DISTS = r[3]; render(); })
+      .then(function (r) { S = r[0]; TR = r[1] || { reports: [] }; RS = r[2]; CANALS = r[3]; DISTS = r[4]; EVL = {}; if (RS) RS.events.forEach(function (x) { EVL[x.id] = x; }); render(); })
       .catch(function (e) { $("stamp").textContent = "โหลดข้อมูลไม่สำเร็จ ลองกดโหลดใหม่"; $("stamp").className = "stamp old"; console.error(e); });
   }
 
@@ -112,10 +117,7 @@
     gauges.filter(function (s) { return ST[s.st] >= 2; }).sort(function (a, b) { return ST[a.st] - ST[b.st]; }).forEach(function (s) {
       L.circleMarker([s.lat, s.lon], { radius: ST[s.st] >= 3 ? 7 : 5, color: "#fff", weight: 1.5, fillColor: COL[s.st], fillOpacity: s.stale ? .5 : 1 }).on("click", function () { showGauge(s); }).addTo(G.gauge);
     });
-    (S.events || []).forEach(function (e) {
-      L.marker([e.lat, e.lon], { icon: L.divIcon({ className: "", html: '<div class="fw-ev" style="width:11px;height:11px;background:' + (COL[e.color] || COL.orange) + '"></div>', iconSize: [11, 11], iconAnchor: [6, 6] }) })
-        .on("click", function () { showEvent(e); }).addTo(G.ev);
-    });
+    drawRoads();
     (S.cameras || []).forEach(function (c) {
       L.marker([c.lat, c.lon], { icon: L.divIcon({ className: "", html: '<div class="fw-cam" style="width:20px;height:16px">▶</div>', iconSize: [20, 16], iconAnchor: [10, 8] }) })
         .on("click", function () { showCam(c); }).addTo(G.cam);
@@ -124,17 +126,18 @@
     homeCard(gauges, tr);
     S._rain = rain; S._tr = tr;
     renderList();
+    renderRoads();
   }
 
   function homeCard(gauges, tr) {
     var R = C.summary_km, d = DM[H.district];
     var g = gauges.filter(function (x) { return x.km <= R && ST[x.st] >= 3 && !x.stale; }).length;
-    var e = (S.events || []).filter(function (x) { return x.km <= R; }).length;
+    var e = RS ? RS.roads.filter(function (x) { return x.level >= 3 && km(H.lat, H.lon, x.lat, x.lon) <= R; }).length : (S.events || []).filter(function (x) { return x.km <= R; }).length;
     var t = tr.filter(function (x) { return x.km <= R; }).length;
     var cam = (S.cameras || []).slice().sort(function (a, b) { return a.km - b.km; })[0];
     var hot = S.districts.filter(function (x) { return x.km <= 8 && x.level === "severe"; }).sort(function (a, b) { return a.km - b.km; });
     $("homeCard").innerHTML = '<div class="row"><span class="t">ออฟฟิศ ' + esc(H.short) + " · เขต" + esc(H.district) + "</span>" + (d ? '<span class="pill lv-' + d.level + '">' + esc(d.level_th) + "</span>" : "") + "</div>" +
-      '<div class="kpis"><div class="kpi"><b>' + g + "</b><small>จุดวัดน้ำเกินวิกฤต ใน " + R + ' กม.</small></div><div class="kpi"><b>' + e + "</b><small>จุดน้ำท่วมบนถนน ใน " + R + ' กม.</small></div>' +
+      '<div class="kpis"><div class="kpi"><b>' + g + "</b><small>จุดวัดน้ำเกินวิกฤต ใน " + R + ' กม.</small></div><div class="kpi"><b>' + e + "</b><small>" + (RS ? "ถนนวิกฤต/ผ่านไม่ได้ ใน " : "จุดน้ำท่วมบนถนน ใน ") + R + ' กม.</small></div>' +
       '<div class="kpi"><b>' + t + "</b><small>ประชาชนแจ้ง Traffy ใน " + R + ' กม. (24 ชม.)</small></div><div class="kpi"><b>' + (cam ? cam.km.toFixed(1) : "–") + "</b><small>กม. ถึงกล้องใกล้สุด</small></div></div>" +
       (hot.length ? '<div class="near">เขตระดับอันตรายใกล้ออฟฟิศ: ' + hot.map(function (x) { return "<b>" + esc(x.name) + "</b> " + x.km.toFixed(0) + " กม."; }).join(" · ") + "</div>" : "") +
       (d ? '<div class="adv">' + esc(d.advice) + "</div>" : "");
@@ -172,7 +175,7 @@
         (rn ? '<div class="m">ฝนสะสม 24 ชม. สูงสุด <span class="mono">' + rn[0] + "</span> มม. ที่ " + esc(rn[1]) + "</div>" : "") +
         (gs.length ? '<div><h3>จุดวัดระดับน้ำ</h3><div class="tbl"><table><thead><tr><th>จุด</th><th class="num">น้ำ</th><th class="num">ตลิ่ง</th><th>สถานะ</th></tr></thead><tbody>' +
           gs.map(function (x) { return "<tr><td>" + esc(x.name) + "<br><small>" + esc(x.canal || "") + " · " + hm(x.time) + (x.stale ? " ค่าเก่า" : "") + '</small></td><td class="num">' + f2(x.value) + '</td><td class="num">' + f2(x.bank) + '</td><td class="st-' + x.st + '">' + STTH[x.st] + "</td></tr>"; }).join("") + "</tbody></table></div>" + (gOk ? '<div class="m">จุดวัดน้ำปกติ/ไม่มีเกณฑ์อีก ' + gOk + " จุด ไม่แสดง</div>" : "") + "</div>" : "") +
-        (d.e.length ? "<div><h3>น้ำท่วมบนถนน (Longdo / iTIC / กรมทางหลวง)</h3><ul>" + d.e.slice().sort(function (a, b) { return a.start < b.start ? 1 : -1; }).map(function (x) { return "<li>" + esc(x.title) + (x.depth_cm ? " · ลึก " + x.depth_cm + " ซม." : "") + " <small>" + hm(x.start) + " · " + esc(x.source) + "</small></li>"; }).join("") + "</ul></div>" : "") +
+        (d.e.length ? "<div><h3>น้ำท่วมบนถนน (Longdo / iTIC / กรมทางหลวง)</h3><ul>" + d.e.slice().sort(function (a, b) { return (evLevel(b) - evLevel(a)) || (a.start < b.start ? 1 : -1); }).map(function (x) { return "<li>" + rpill(evLevel(x)) + " " + esc(x.title) + (x.depth_cm ? " · ลึก " + x.depth_cm + " ซม." : "") + " <small>" + hm(x.start) + " · " + esc(x.source) + "</small></li>"; }).join("") + "</ul></div>" : "") +
         (d.c.length ? "<div><h3>กล้อง</h3><ul>" + d.c.map(function (x) { return '<li><a href="' + esc(x.link) + '" target="_blank" rel="noopener">' + esc(x.title) + "</a> <small>" + esc(x.org) + "</small></li>"; }).join("") + "</ul></div>" : "") +
         (tfs.length ? "<div><h3>Traffy ล่าสุด</h3><ul>" + tfs.map(function (x) { return '<li><a href="' + esc((TR.link_base || "") + x.id) + '" target="_blank" rel="noopener">' + esc((x.text || "").slice(0, 90)) + "…</a> <small>" + hm(x.time) + " · " + esc(TFTH[x.state] || x.state) + "</small></li>"; }).join("") + "</ul></div>" : "") +
         "</div>";
@@ -184,6 +187,52 @@
     if (!ds.length) { var em = document.createElement("p"); em.className = "note"; em.textContent = "ไม่มีเขตที่ผิดปกติในจังหวัดนี้"; el.appendChild(em); }
     if (nNormal) { var tg = document.createElement("button"); tg.type = "button"; tg.className = "maplink"; tg.textContent = showNormal ? "ซ่อนเขตปกติ" : "แสดงเขตปกติอีก " + nNormal + " เขต"; tg.onclick = function () { showNormal = !showNormal; renderList(); }; el.appendChild(tg); }
   }
+
+  /* ---------- flooded roads by severity ---------- */
+  function showRoad(r) {
+    var ev = (S.events || []).filter(function (e) { return r.ids.indexOf(e.id) > -1; }).sort(function (a, b) { return evLevel(b) - evLevel(a); });
+    card('<span class="t">' + rpill(r.level) + " " + esc(r.name) + '</span><span class="m">' + r.n + " รายงาน · ยืนยันโดยเจ้าหน้าที่ " + r.official + (r.depth_cm ? " · ลึกสุด ~" + r.depth_cm + " ซม." : "") + (r.uturn ? " · เฉพาะจุดกลับรถ" : "") +
+      " · " + km(H.lat, H.lon, r.lat, r.lon).toFixed(1) + " กม. จาก " + esc(H.short) + " · รายงาน " + hm(r.latest) + "</span>" +
+      "<ul>" + ev.slice(0, 6).map(function (e) { return "<li>" + rpill(evLevel(e)) + " " + esc((e.text || e.title).slice(0, 140)) + " <small>" + hm(e.start) + " · " + esc(e.source) + "</small></li>"; }).join("") + "</ul>" + lk(r.lat, r.lon));
+  }
+  function drawRoads() {
+    G.ev.clearLayers();
+    if (RS) RS.roads.filter(function (r) { return r.level >= sevMin && r.lines.length; }).slice().reverse().forEach(function (r) {
+      var w = { 4: 8, 3: 6, 2: 4, 1: 3 }[r.level];
+      L.polyline(r.lines.map(function (s) { return s.map(function (p) { return [p[1], p[0]]; }); }), { color: "#fff", weight: w + 3, opacity: .9, interactive: false }).addTo(G.ev);
+      L.polyline(r.lines.map(function (s) { return s.map(function (p) { return [p[1], p[0]]; }); }), { color: RCOL[r.level], weight: w, opacity: .95 }).on("click", function () { showRoad(r); }).addTo(G.ev);
+    });
+    (S.events || []).filter(function (e) { return evLevel(e) >= sevMin; }).sort(function (a, b) { return evLevel(a) - evLevel(b); }).forEach(function (e) {
+      var lv = evLevel(e), z = { 4: 15, 3: 13, 2: 10, 1: 9 }[lv];
+      L.marker([e.lat, e.lon], { zIndexOffset: lv * 100, icon: L.divIcon({ className: "", html: '<div class="fw-ev' + (lv === 4 ? " x" : "") + '" style="width:' + z + "px;height:" + z + "px;background:" + RCOL[lv] + '"></div>', iconSize: [z, z], iconAnchor: [z / 2, z / 2] }) })
+        .on("click", function () { showEvent(e); }).addTo(G.ev);
+    });
+  }
+  var roadsMore = false;
+  function renderRoads() {
+    var el = $("rlist"); if (!S) return;
+    if (!RS) { el.innerHTML = '<p class="note">ยังไม่มีข้อมูลจัดระดับถนน รอรอบดึงข้อมูลถัดไป</p>'; return; }
+    var cnt = { 4: 0, 3: 0, 2: 0, 1: 0 }; RS.roads.forEach(function (r) { cnt[r.level]++; });
+    var rs = RS.roads.filter(function (r) { return r.level >= sevMin; }).map(function (r) { r.km = km(H.lat, H.lon, r.lat, r.lon); return r; })
+      .sort(function (a, b) { return (b.level - a.level) || (a.km - b.km); });
+    var show = roadsMore ? rs : rs.slice(0, 20);
+    el.innerHTML = '<div class="rsum">' + [4, 3, 2, 1].map(function (l) { return rpill(l) + " " + cnt[l]; }).join(" ") + "</div>" +
+      (show.length ? "" : '<p class="note">ไม่มีถนนในระดับที่เลือก</p>');
+    show.forEach(function (r) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "rrow";
+      b.innerHTML = rpill(r.level) + '<span class="rn">' + esc(r.name) + '</span><span class="rm">' + r.km.toFixed(1) + " กม. · " + r.n + " รายงาน" + (r.official ? " · ยืนยัน " + r.official : " · ประชาชนแจ้ง") +
+        (r.depth_cm ? " · ~" + r.depth_cm + " ซม." : "") + (r.uturn ? " · จุดกลับรถ" : "") + " · " + hm(r.latest) + "</span>";
+      b.onclick = function () {
+        setView(null);
+        if (r.lines.length) map.fitBounds(L.latLngBounds([].concat.apply([], r.lines).map(function (p) { return [p[1], p[0]]; })).pad(0.3), { maxZoom: 16 });
+        else map.setView([r.lat, r.lon], 15);
+        showRoad(r); $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+      };
+      el.appendChild(b);
+    });
+    if (rs.length > 20) { var m = document.createElement("button"); m.type = "button"; m.className = "maplink"; m.textContent = roadsMore ? "แสดงน้อยลง" : "ดูอีก " + (rs.length - 20) + " ถนน"; m.onclick = function () { roadsMore = !roadsMore; renderRoads(); }; el.appendChild(m); }
+  }
+  $("sevMin").onchange = function () { sevMin = +this.value; if (S) { drawRoads(); renderRoads(); } };
 
   /* ---------- controls ---------- */
   function setView(v) { ["vHome", "vAll", "vMe"].forEach(function (id) { $(id).setAttribute("aria-pressed", id === v); }); }

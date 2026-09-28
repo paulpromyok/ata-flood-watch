@@ -32,11 +32,12 @@
       <button type="button" data-l="dist" aria-pressed="true"><span class="sw sq" style="background:var(--f-sev)"></span>ระดับเขต</button>
       <button type="button" data-l="canal" aria-pressed="true"><span class="sw ln" style="background:var(--canal)"></span>คลอง</button>
       <button type="button" data-l="gauge" aria-pressed="true"><span class="sw" style="background:var(--warn)"></span>ระดับน้ำ</button>
-      <button type="button" data-l="ev" aria-pressed="true"><span class="sw sq" style="background:var(--sev)"></span>น้ำท่วมบนถนน</button>
+      <button type="button" data-l="ev" aria-pressed="true"><span class="sw ln" style="background:var(--sev)"></span>ถนนน้ำท่วม</button>
       <button type="button" data-l="tf" aria-pressed="true"><span class="sw" style="background:var(--traffy)"></span>Traffy</button>
       <button type="button" data-l="cam" aria-pressed="true"><span class="sw sq" style="background:var(--cam)"></span>กล้อง</button>
       <button type="button" data-l="radar" aria-pressed="false"><span class="sw" style="background:#3aa0ff"></span>เรดาร์ฝน 2 ชม.</button>
     </div>
+    <label class="sevsel">ถนนน้ำท่วมที่แสดง <select id="sevMin"><option value="4">เฉพาะผ่านไม่ได้</option><option value="3" selected>วิกฤตขึ้นไป</option><option value="2">ท่วมขังขึ้นไป</option><option value="1">ทั้งหมด</option></select></label>
     <div id="map" role="region" aria-label="แผนที่น้ำท่วม"></div>
     <div class="radarbar" id="radarBar" hidden>
       <button type="button" id="rPlay">▶ เล่น</button>
@@ -47,6 +48,12 @@
     </div>
     <div class="info" id="info"></div>
     <p class="note">พื้นเขต: แดง อันตราย · ส้ม เตือนภัย · เหลือง เฝ้าระวัง · จุดวัดน้ำ (แสดงเฉพาะที่ผิดปกติ): แดง ล้นตลิ่ง · ส้ม เกินวิกฤต · เหลือง เฝ้าระวัง · จุดม่วง = ประชาชนแจ้ง Traffy (รัศมี <span id="tfkm"></span> กม. จาก ATA)</p>
+  </section>
+
+  <section>
+    <h2>ถนนน้ำท่วม · จัดตามความรุนแรง</h2>
+    <div id="rlist" class="rlist"></div>
+    <p class="note">ระดับ: ผ่านไม่ได้ = ปิด/รถไม่สามารถสัญจร หรือลึก ≥40 ซม. · วิกฤต = รถเล็กผ่านไม่ได้ ลึก 30–39 ซม. หรือกรมทางหลวงแจ้งผ่านไม่ได้ที่จุดกลับรถ · ท่วมขัง = มีน้ำบนผิวจราจร · ผ่านได้ = ตื้นหรือกำลังลด · จัดระดับอัตโนมัติจากข้อความรายงาน</p>
   </section>
 
   <section>
