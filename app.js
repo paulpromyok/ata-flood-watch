@@ -1,7 +1,7 @@
 /* ATA Flood Watch — front end. Reads data/*.json produced by fetch_data.py (GitHub Actions). */
 (function () {
   "use strict";
-  var C = window.FW_CONFIG, H = C.home;
+  var C = window.FW_CONFIG, H = C.home, LK = (C.longdo_key || "").trim(), LW = "https://weather.longdo.com/rain/api/v1/";
   var LV = { severe: 3, warning: 2, watch: 1, normal: 0 };
   var ST = { overbank: 4, critical: 3, warning: 2, normal: 1, unknown: 0 };
   var STTH = { overbank: "ล้นตลิ่ง", critical: "เกินวิกฤต", warning: "เฝ้าระวัง", normal: "ปกติ", unknown: "ไม่มีเกณฑ์" };
@@ -140,7 +140,54 @@
       '<div class="kpis"><div class="kpi"><b>' + g + "</b><small>จุดวัดน้ำเกินวิกฤต ใน " + R + ' กม.</small></div><div class="kpi"><b>' + e + "</b><small>" + (RS ? "ถนนวิกฤต/ผ่านไม่ได้ ใน " : "จุดน้ำท่วมบนถนน ใน ") + R + ' กม.</small></div>' +
       '<div class="kpi"><b>' + t + "</b><small>ประชาชนแจ้ง Traffy ใน " + R + ' กม. (24 ชม.)</small></div><div class="kpi"><b>' + (cam ? cam.km.toFixed(1) : "–") + "</b><small>กม. ถึงกล้องใกล้สุด</small></div></div>" +
       (hot.length ? '<div class="near">เขตระดับอันตรายใกล้ออฟฟิศ: ' + hot.map(function (x) { return "<b>" + esc(x.name) + "</b> " + x.km.toFixed(0) + " กม."; }).join(" · ") + "</div>" : "") +
+      '<div class="rainnow" id="rainNow"' + (LK ? "" : " hidden") + "></div>" +
       (d ? '<div class="adv">' + esc(d.advice) + "</div>" : "");
+    loadRainNow();
+  }
+
+  /* ---------- rain now + nowcast at ATA (Longdo Weather) ---------- */
+  var RAIN_LV = { no_rain: 0, very_light: 1, light: 2, moderate: 3, heavy: 4, very_heavy: 5 };
+  var RAIN_TH = ["ไม่มีฝน", "ละอองฝน", "ฝนเบา", "ฝนปานกลาง", "ฝนหนัก", "ฝนหนักมาก"];
+  var rainCache = null;
+  function rainLv(o) { return o && o.rain ? (o.rain.intensity != null ? o.rain.intensity : RAIN_LV[o.rain.level] || 0) : null; }
+  function rainPill(lv) { return lv == null ? '<span class="pill rn-x">ไม่มีข้อมูล</span>' : '<span class="pill rn-' + lv + '">' + RAIN_TH[lv] + "</span>"; }
+  function drawRainNow() {
+    var el = $("rainNow"); if (!el || !rainCache) return;
+    var r = rainCache, now = rainLv(r.loc), f = (r.fc && r.fc.forecast) || [], a = r.area && r.area.stats;
+    var f15 = f[0] && f[0].available ? rainLv(f[0]) : null, f30 = f[1] && f[1].available ? rainLv(f[1]) : null;
+    var worst = Math.max(now || 0, f15 || 0, f30 || 0);
+    el.className = "rainnow" + (worst >= 4 ? " hot" : worst >= 2 ? " wet" : "");
+    el.innerHTML = '<div class="rrowh"><span>ฝนที่ ' + esc(H.short) + "</span><span>ตอนนี้ " + rainPill(now) + "</span><span>+15 นาที " + rainPill(f15) + "</span><span>+30 นาที " + rainPill(f30) + "</span></div>" +
+      (a ? '<div class="m">รัศมี 10 กม.: ฝนครอบคลุม ' + Math.round(a.rain_coverage_pct) + "% · แรงสุด " + RAIN_TH[a.max_intensity || 0] +
+        (r.loc && r.loc.unix_time ? " · เรดาร์ " + rTime(+r.loc.unix_time) : "") + "</div>" : "") +
+      (worst >= 4 ? '<div class="m"><b>ฝนหนักกำลังมา/กำลังตก — เลี่ยงถนนที่ท่วมง่าย และเฝ้าดูระดับน้ำคลองใกล้ออฟฟิศ</b></div>' : "");
+  }
+  function loadRainNow() {
+    if (!LK) return;
+    if (rainCache && Date.now() - rainCache.at < 4 * 60000) { drawRainNow(); return; }
+    var q = "lat=" + H.lat + "&lon=" + H.lon + "&key=" + encodeURIComponent(LK);
+    function j(u) { return fetch(LW + u).then(function (r) { if (!r.ok) throw r.status; return r.json(); }).catch(function () { return null; }); }
+    Promise.all([j("location?" + q), j("forecast/location?" + q), j("area?" + q + "&radius_km=10")]).then(function (x) {
+      rainCache = { at: Date.now(), loc: x[0], fc: x[1], area: x[2] };
+      if (!x[0] && !x[1]) { var el = $("rainNow"); if (el) { el.innerHTML = '<div class="m">โหลดข้อมูลฝนจาก Longdo ไม่สำเร็จ (ตรวจ API key)</div>'; } return; }
+      drawRainNow();
+    });
+    loadRainCams();
+  }
+  /* cameras where the radar currently sees rain */
+  var rainCams = L.layerGroup().addTo(map);
+  function loadRainCams() {
+    fetch(LW + "cameras?key=" + encodeURIComponent(LK)).then(function (r) { return r.json(); }).then(function (m) {
+      rainCams.clearLayers();
+      (m.cameras || []).forEach(function (c) {
+        var d = km(H.lat, H.lon, c.lat, c.lon); if (d > 40) return;
+        var lv = rainLv(c) || 1;
+        L.marker([c.lat, c.lon], { icon: L.divIcon({ className: "", html: '<div class="fw-rcam rn-' + lv + '">☂</div>', iconSize: [20, 20], iconAnchor: [10, 10] }) })
+          .bindPopup("<b>" + esc(c.title) + "</b><br>" + esc(RAIN_TH[lv]) + " ที่กล้องนี้ · " + d.toFixed(1) + " กม. จาก " + esc(H.short) +
+            (c.hls_url ? '<br><a href="' + esc(c.hls_url) + '" target="_blank" rel="noopener">ดูภาพสด</a>' : "") + '<br><small>' + esc(c.organization || "") + "</small>")
+          .addTo(rainCams);
+      });
+    }).catch(function () {});
   }
 
   /* ---------- province list ---------- */
@@ -254,18 +301,18 @@
   document.querySelectorAll("#layers button").forEach(function (b) {
     b.onclick = function () {
       var on = b.getAttribute("aria-pressed") !== "true", l = b.dataset.l; b.setAttribute("aria-pressed", on);
-      if (on) { map.addLayer(G[l]); if (l === "radar") loadRadar(); } else { map.removeLayer(G[l]); if (l === "radar") { stopRadar(); $("radarBar").hidden = true; } }
+      if (on) { map.addLayer(G[l]); if (l === "radar") loadRadar(); if (l === "cam") map.addLayer(rainCams); } else { map.removeLayer(G[l]); if (l === "cam") map.removeLayer(rainCams); if (l === "radar") { stopRadar(); $("radarBar").hidden = true; } }
     };
   });
-  /* ---------- rain radar (RainViewer, past ~2 h, animated) ---------- */
+  /* ---------- rain radar: Longdo Weather (past 3 h + 30 min forecast, zoom 9) or RainViewer fallback ---------- */
   var RF = [], RL = [], ri = 0, rTimer = null;
   function rTime(t) { return new Date(t * 1000).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }) + " น."; }
   function showFrame(i) {
     if (!RL.length) return;
     ri = i; RL.forEach(function (l, k) { l.setOpacity(k === i ? .65 : 0); });
     $("rSlider").value = i;
-    var last = RF[RF.length - 1].time, mins = Math.round((last - RF[i].time) / 60);
-    $("rTime").textContent = rTime(RF[i].time) + (i === RF.length - 1 ? " · ล่าสุด" : " · ก่อนล่าสุด " + mins + " นาที");
+    var obs = RF.filter(function (f) { return !f.fc; }), last = obs[obs.length - 1].time, mins = Math.round((last - RF[i].time) / 60);
+    $("rTime").textContent = rTime(RF[i].time) + (RF[i].fc ? " · พยากรณ์ +" + (-mins) + " นาที" : RF[i].time === last ? " · ล่าสุด" : " · ก่อนล่าสุด " + mins + " นาที");
   }
   function stopRadar() { if (rTimer) { clearInterval(rTimer); rTimer = null; } $("rPlay").textContent = "▶ เล่น"; }
   function playRadar() {
@@ -273,17 +320,37 @@
     rTimer = setInterval(function () { showFrame((ri + 1) % RL.length); }, 700);
     $("rPlay").textContent = "❚❚ หยุด";
   }
+  function setRadar(fr, mk) {
+    var playing = !!rTimer; stopRadar();
+    G.radar.clearLayers();
+    RF = fr; RL = fr.map(mk).map(function (l) { return l.addTo(G.radar); });
+    $("rSlider").max = fr.length - 1;
+    var lastObs = 0; fr.forEach(function (f, k) { if (!f.fc) lastObs = k; });
+    showFrame(lastObs);
+    if (playing) playRadar();
+  }
   function loadRadar() {
     $("radarBar").hidden = false;
+    if (LK) {
+      var k = "?key=" + encodeURIComponent(LK);
+      fetch(LW + "layer/list" + k).then(function (r) { if (!r.ok) throw r.status; return r.json(); }).then(function (m) {
+        var past = ((m.radar && m.radar.past) || []).slice(-12), fc = (m.radar && m.radar.forecast) || [];
+        if (!past.length) throw 0;
+        var fr = past.map(function (f) { return { time: f.time, path: f.path, z: f.maxzoom || 9 }; })
+          .concat(fc.map(function (f) { return { time: f.time, path: f.path, z: f.maxzoom || 6, fc: true }; }));
+        $("rSrc").href = "https://weather.longdo.com/"; $("rSrc").textContent = "Longdo Weather";
+        setRadar(fr, function (f) { return L.tileLayer("https://weather.longdo.com" + f.path + "/{z}/{x}/{y}.png" + k, { opacity: 0, minNativeZoom: 5, maxNativeZoom: f.z, maxZoom: 19, attribution: "เรดาร์ฝน © Longdo Weather" }); });
+      }).catch(loadRainViewer);
+      return;
+    }
+    loadRainViewer();
+  }
+  function loadRainViewer() {
     fetch("https://api.rainviewer.com/public/weather-maps.json").then(function (r) { return r.json(); }).then(function (m) {
       var fr = [].concat((m.radar && m.radar.past) || [], (m.radar && m.radar.nowcast) || []); if (!fr.length) return;
-      var playing = !!rTimer; stopRadar();
-      G.radar.clearLayers();
-      RF = fr;
-      RL = fr.map(function (f) { return L.tileLayer(m.host + f.path + "/256/{z}/{x}/{y}/2/1_1.png", { opacity: 0, maxNativeZoom: 7, maxZoom: 19, attribution: "Radar © RainViewer" }).addTo(G.radar); });
-      $("rSlider").max = fr.length - 1;
-      showFrame(fr.length - 1);
-      if (playing) playRadar();
+      (m.radar.nowcast || []).forEach(function (f) { f.fc = true; });
+      $("rSrc").href = "https://www.rainviewer.com/map.html?loc=13.742,100.702,9"; $("rSrc").textContent = "เปิด RainViewer";
+      setRadar(fr, function (f) { return L.tileLayer(m.host + f.path + "/256/{z}/{x}/{y}/2/1_1.png", { opacity: 0, maxNativeZoom: 7, maxZoom: 19, attribution: "Radar © RainViewer" }); });
     }).catch(function () { $("rTime").textContent = "โหลดเรดาร์ฝนไม่สำเร็จ"; });
   }
   $("rPlay").onclick = playRadar;

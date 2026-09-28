@@ -110,6 +110,15 @@ a.btn small{color:var(--muted);font-size:12px;line-height:1.4}
 .radarbar input[type=range]{flex:1 1 140px;accent-color:var(--accent)}
 .radarbar .rtime{min-width:9em}
 .rlegend{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
-.rlegend i{display:inline-block;width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,#88ddee,#0099cc,#0077aa,#ffee00,#ffaa00,#ff4400,#c10000)}
+.rlegend i{display:inline-block;width:90px;height:8px;border-radius:4px;background:linear-gradient(90deg,#7accff,#40adfa,#3dd48c,#eb2914,#9e00b8)}
+.rainnow{background:var(--chip);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.rainnow[hidden]{display:none}
+.rainnow.wet{outline:1px solid #40adfa}
+.rainnow.hot{outline:2px solid var(--sev);background:var(--sev-bg)}
+.rainnow .rrowh{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.rainnow .rrowh>span:first-child{font-weight:700}
+.rainnow .m{color:var(--muted);font-size:13px}
+.rn-0{background:var(--ok-bg);color:var(--ok)} .rn-1{background:#dff1ff;color:#1d6fa5} .rn-2{background:#cfe8fd;color:#0b5c99} .rn-3{background:#d6f5e6;color:#137a48} .rn-4{background:#eb2914;color:#fff} .rn-5{background:#9e00b8;color:#fff} .rn-x{background:var(--chip);color:var(--muted)}
+.fw-rcam{width:20px;height:20px;border-radius:50%;border:2px solid #fff;font-size:12px;line-height:16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.35)}
 @media (max-width:420px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}

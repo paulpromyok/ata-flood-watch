@@ -35,7 +35,7 @@
       <button type="button" data-l="ev" aria-pressed="true"><span class="sw ln" style="background:var(--sev)"></span>ถนนน้ำท่วม</button>
       <button type="button" data-l="tf" aria-pressed="true"><span class="sw" style="background:var(--traffy)"></span>Traffy</button>
       <button type="button" data-l="cam" aria-pressed="true"><span class="sw sq" style="background:var(--cam)"></span>กล้อง</button>
-      <button type="button" data-l="radar" aria-pressed="false"><span class="sw" style="background:#3aa0ff"></span>เรดาร์ฝน 2 ชม.</button>
+      <button type="button" data-l="radar" aria-pressed="false"><span class="sw" style="background:#3aa0ff"></span>เรดาร์ฝน</button>
     </div>
     <label class="sevsel">ถนนน้ำท่วมที่แสดง <select id="sevMin"><option value="4">เฉพาะผ่านไม่ได้</option><option value="3" selected>วิกฤตขึ้นไป</option><option value="2">ท่วมขังขึ้นไป</option><option value="1">ทั้งหมด</option></select></label>
     <div id="map" role="region" aria-label="แผนที่น้ำท่วม"></div>
@@ -44,10 +44,10 @@
       <input type="range" id="rSlider" min="0" max="0" value="0" aria-label="เลือกเวลาเรดาร์">
       <span class="rtime mono" id="rTime">กำลังโหลดเรดาร์…</span>
       <span class="rlegend"><span>เบา</span><i></i><span>หนัก</span></span>
-      <a href="https://www.rainviewer.com/map.html?loc=13.742,100.702,9" target="_blank" rel="noopener">เปิด RainViewer</a>
+      <a id="rSrc" href="https://weather.longdo.com/" target="_blank" rel="noopener">Longdo Weather</a>
     </div>
     <div class="info" id="info"></div>
-    <p class="note">พื้นเขต: แดง อันตราย · ส้ม เตือนภัย · เหลือง เฝ้าระวัง · จุดวัดน้ำ (แสดงเฉพาะที่ผิดปกติ): แดง ล้นตลิ่ง · ส้ม เกินวิกฤต · เหลือง เฝ้าระวัง · จุดม่วง = ประชาชนแจ้ง Traffy (รัศมี <span id="tfkm"></span> กม. จาก ATA)</p>
+    <p class="note">พื้นเขต: แดง อันตราย · ส้ม เตือนภัย · เหลือง เฝ้าระวัง · จุดวัดน้ำ (แสดงเฉพาะที่ผิดปกติ): แดง ล้นตลิ่ง · ส้ม เกินวิกฤต · เหลือง เฝ้าระวัง · ☂ = กล้องที่เรดาร์เห็นฝนตอนนี้ · จุดม่วง = ประชาชนแจ้ง Traffy (รัศมี <span id="tfkm"></span> กม. จาก ATA)</p>
   </section>
 
   <section>
@@ -84,7 +84,7 @@
 
   <footer class="note">
     ระดับเขตคำนวณด้วยกฎอย่างง่าย ไม่ใช่ประกาศทางการ โปรดตรวจสอบกับ กทม. / ปภ. / กรมอุตุฯ ·
-    ข้อมูล: ThaiWater (สสน.), สำนักการระบายน้ำ กทม., Longdo Traffic / iTIC / กรมทางหลวง, Traffy Fondue, Open-Meteo, RainViewer ·
+    ข้อมูล: ThaiWater (สสน.), สำนักการระบายน้ำ กทม., Longdo Traffic / iTIC / กรมทางหลวง, Traffy Fondue, Open-Meteo, เรดาร์ฝน Longdo Weather / RainViewer ·
     ตัวดึงข้อมูลพัฒนาต่อจาก <a href="https://github.com/icyice1998/Flood" target="_blank" rel="noopener">Floodwatcher</a> (MIT) ·
     แผนที่ ขอบเขต คลอง © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> ·
     AT Technology Anywhere Co., Ltd.
