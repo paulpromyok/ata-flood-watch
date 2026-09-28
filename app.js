@@ -81,8 +81,12 @@
   function load() {
     return Promise.all([j(BASE + "latest.json"), j(BASE + "traffy.json").catch(function () { return { reports: [] }; }), j(BASE + "road_status.json").catch(function () { return null; }),
       CANALS ? Promise.resolve(CANALS) : j(BASE + "canals.geojson"), DISTS ? Promise.resolve(DISTS) : j(BASE + "districts.geojson"),
-      j(BASE + "outlook.json").catch(function () { return null; })])
-      .then(function (r) { S = r[0]; TR = r[1] || { reports: [] }; RS = r[2]; CANALS = r[3]; DISTS = r[4]; OL = r[5]; EVL = {}; if (RS) RS.events.forEach(function (x) { EVL[x.id] = x; }); render(); renderOutlook(); })
+      j(BASE + "outlook.json").catch(function () { return null; }), j(BASE + "help.json").catch(function () { return null; })])
+      .then(function (r) {
+        S = r[0]; TR = r[1] || { reports: [] }; RS = r[2]; CANALS = r[3]; DISTS = r[4]; OL = r[5]; HL = r[6]; EVL = {}; if (RS) RS.events.forEach(function (x) { EVL[x.id] = x; });
+        render(); renderOutlook(); renderTeasers();
+        if (TAB === "fc") loadRainArea(); if (TAB === "help") renderHelp();
+      })
       .catch(function (e) { $("stamp").textContent = "โหลดข้อมูลไม่สำเร็จ ลองกดโหลดใหม่"; $("stamp").className = "stamp old"; console.error(e); });
   }
 
@@ -204,6 +208,12 @@
     var dir = !sure ? '<span class="un">? ไม่แน่ชัด</span>' : c.dir === "rising" || c.dir === "up" ? '<span class="up">↑ ขึ้น</span>' : c.dir === "falling" || c.dir === "down" ? '<span class="dn">↓ ลง</span>' : '<span class="st">→ ทรงตัว</span>';
     return "<div><b>" + label + "</b>" + dir + "<br>" + rng + "</div>";
   }
+  function gStatus(g) {  // [pill class, label] from the numbers, so the pill never contradicts the text
+    if (g.freeboard != null && g.freeboard < 0) return ["severe", "ล้นตลิ่ง"];
+    if (g.over_crit != null && g.over_crit > 0) return ["warning", "เกินวิกฤต กทม."];
+    var m = { overbank: ["severe", "ล้นตลิ่ง"], critical: ["warning", "เกินวิกฤต"], warning: ["watch", "เฝ้าระวัง"], normal: ["normal", "ปกติ"] };
+    return m[g.status] || null;
+  }
   function renderOutlook() {
     var sec = $("outlook");
     if (!OL || !OL.gauges) { sec.hidden = true; return; }
@@ -216,9 +226,10 @@
         (p.desc ? "<span>" + esc(p.desc) + "</span>" : "") +
         '<span class="m">ฝน 24 ชม. ข้างหน้า ~' + (p.rain_next24_mm != null ? (+p.rain_next24_mm).toFixed(0) : "?") + " มม." + (p.traffy_1km_6h != null ? " · แจ้งน้ำขังใน 1 กม. (6 ชม.) " + p.traffy_1km_6h + " เรื่อง" : "") + "</span></div>" : "") +
       gs.map(function (g, i) {
-        var now = g.over_crit != null && g.over_crit > 0 ? "เกินระดับวิกฤต กทม. " + cm(g.over_crit) + " ซม." : g.freeboard != null ? (g.freeboard >= 0 ? "ต่ำกว่าตลิ่ง " + Math.round(g.freeboard * 100) + " ซม." : "สูงกว่าตลิ่ง " + Math.round(-g.freeboard * 100) + " ซม.") : "";
+        var gst = gStatus(g), now = [g.over_crit != null && g.over_crit > 0 ? "สูงกว่าเกณฑ์ " + Math.round(g.over_crit * 100) + " ซม." : "",
+          g.freeboard != null ? (g.freeboard >= 0 ? "ต่ำกว่าตลิ่ง " + Math.round(g.freeboard * 100) + " ซม." : "ล้นตลิ่ง " + Math.round(-g.freeboard * 100) + " ซม.") : ""].filter(Boolean).join(" · ");
         return '<button type="button" class="olg" data-i="' + i + '"><div class="top"><span class="nm">' + esc(g.name) + '</span><span class="now">' + g.km.toFixed(1) + " กม. · " +
-          (g.status && OST[g.status] ? '<span class="pill lv-' + ({ overbank: "severe", critical: "warning", warning: "watch", normal: "normal" })[g.status] + '">' + OST[g.status] + "</span> " : "") + esc(now) + "</span></div>" +
+          (gst ? '<span class="pill lv-' + gst[0] + '">' + gst[1] + "</span> " : "") + esc(now) + "</span></div>" +
           '<div class="olh">' + trendCell("ใน 12 ชม.", g.c12) + trendCell("ใน 24 ชม.", g.c24) + trendCell("ใน 48 ชม.", g.c48) + "</div></button>";
       }).join("") +
       '<p class="olnote">ช่วงตัวเลข = ช่วงที่น่าจะเป็นของการเปลี่ยนแปลงระดับน้ำ · "ไม่แน่ชัด" = แบบจำลองยังทำได้ไม่ดีกว่าการสมมติว่าน้ำคงที่ ณ จุดนั้น · ' +
@@ -227,6 +238,109 @@
     $("olBody").querySelectorAll(".olg").forEach(function (b) {
       b.onclick = function () { var g = gs[+b.dataset.i]; map.setView([g.lat, g.lon], 15); $("map").scrollIntoView({ behavior: "smooth", block: "center" }); };
     });
+  }
+
+  /* ---------- tabs: สถานการณ์ / พยากรณ์ / ช่วยเหลือ ---------- */
+  var TAB = "now", HL = null;
+  function showTab(t, user) {
+    if (["now", "fc", "help"].indexOf(t) < 0) t = "now";
+    TAB = t; document.body.setAttribute("data-tab", t);
+    document.querySelectorAll(".tabbar button").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.tab === t); });
+    if (user) { try { history.replaceState(null, "", t === "now" ? location.pathname + location.search : "#" + t); } catch (e) {} window.scrollTo(0, 0); }
+    if (t === "now") setTimeout(function () { map.invalidateSize(); }, 60);
+    if (t === "fc" && S) loadRainArea();
+    if (t === "help" && S) renderHelp();
+  }
+  document.querySelectorAll(".tabbar button").forEach(function (b) { b.onclick = function () { showTab(b.dataset.tab, true); }; });
+  window.addEventListener("hashchange", function () { showTab(location.hash.slice(1)); });
+  function go(t) { return function () { showTab(t, true); }; }
+
+  /* short links from the main page to the other two pages */
+  function renderTeasers() {
+    var el = $("teasers"), out = [];
+    if (OL && OL.gauges) {
+      var gs = OL.gauges.filter(function (g) { return !g.stale && g.level != null && g.km <= C.summary_km; }).slice(0, 6);
+      if (gs.length) {
+        var over = gs.filter(function (g) { return g.over_crit > 0 || g.freeboard < 0; }).length, lo = 0, hi = 0, up = 0, dn = 0;
+        gs.forEach(function (g) { var c = g.c24; if (!c) return; var l = c.likely || c.range90 || [0, 0]; lo = Math.min(lo, l[0]); hi = Math.max(hi, l[1]);
+          var sure = c.method && c.method !== "persistence" && c.proven !== false && c.confidence !== "low"; if (sure && c.dir === "rising") up++; if (sure && c.dir === "falling") dn++; });
+        out.push(['fc', "คลองใกล้ ATA", "เกินวิกฤต " + over + "/" + gs.length + " จุด · 24 ชม. ข้างหน้า " + cm(lo) + " ถึง " + cm(hi) + " ซม. " + (up ? "(มีจุดแนวโน้มขึ้น)" : dn ? "(มีจุดแนวโน้มลง)" : "(ไม่แน่ชัด)")]);
+      }
+    }
+    if (HL && HL.facilities) {
+      var sh = HL.facilities.filter(function (f) { return f.category === "ศูนย์พักพิงชั่วคราว" && f.district === H.district; });
+      if (sh.length) { var open = sh.filter(function (f) { var t = fSt(f)[1]; return t !== "เต็ม" && t !== "ปิด"; }).length;
+        out.push(['help', "ศูนย์พักพิงเขต" + H.district, "ยังรับได้ " + open + " จาก " + sh.length + " แห่ง · ดูจุดใกล้เคียง จุดจอดรถ จุดรับบริจาค"]); }
+    }
+    el.innerHTML = out.map(function (o, i) { return '<button type="button" class="teaser" data-i="' + i + '"><span><b>' + esc(o[1]) + "</b> " + esc(o[2]) + '</span><span class="go">›</span></button>'; }).join("");
+    el.querySelectorAll(".teaser").forEach(function (b) { b.onclick = go(out[+b.dataset.i][0]); });
+  }
+
+  /* ---------- พยากรณ์: rain by district now + next 30 min (Longdo Weather) ---------- */
+  var rainAreaAt = 0;
+  function rainBadge(st) { if (!st) return rainPill(null); var lv = st.max_intensity || 0; return rainPill(lv) + (lv ? ' <span class="m">' + Math.round(st.rain_coverage_pct) + "% ของพื้นที่</span>" : ""); }
+  function loadRainArea(force) {
+    var el = $("rainArea");
+    if (!LK) { el.innerHTML = '<p class="note">ต้องใส่ longdo_key ใน config.js เพื่อดูฝนรายเขต</p>'; return; }
+    if (!force && Date.now() - rainAreaAt < 4 * 60000) return;
+    rainAreaAt = Date.now();
+    var k = "&key=" + encodeURIComponent(LK);
+    var ds = S.districts.filter(function (d) { return d.km <= 12; }).sort(function (a, b) { return a.km - b.km; }).slice(0, 8);
+    function j2(u) { return fetch(LW + u + k).then(function (r) { if (!r.ok) throw r.status; return r.json(); }).catch(function () { return null; }); }
+    Promise.all([j2("forecast/area?lat=" + H.lat + "&lon=" + H.lon + "&radius_km=15"), j2("area?lat=" + H.lat + "&lon=" + H.lon + "&radius_km=15")]
+      .concat(ds.map(function (d) { return j2("area?lat=" + d.lat + "&lon=" + d.lon + "&radius_km=3"); }))).then(function (x) {
+      var fc = (x[0] && x[0].forecast) || [], now15 = x[1] && x[1].stats;
+      el.innerHTML = '<div class="olhead"><span class="t">รัศมี 15 กม. รอบ ' + esc(H.short) + '</span><div class="olh">' +
+          "<div><b>ตอนนี้</b>" + rainBadge(now15) + "</div>" +
+          "<div><b>+15 นาที</b>" + rainBadge(fc[0] && fc[0].available ? fc[0].stats : null) + "</div>" +
+          "<div><b>+30 นาที</b>" + rainBadge(fc[1] && fc[1].available ? fc[1].stats : null) + "</div></div></div>" +
+        '<div class="tbl"><table><thead><tr><th>เขต</th><th class="num">กม.</th><th>ฝนตอนนี้ (รัศมี 3 กม.)</th></tr></thead><tbody>' +
+        ds.map(function (d, i) { var st = x[i + 2] && x[i + 2].stats; return "<tr><td>" + esc(d.name) + '</td><td class="num">' + d.km.toFixed(1) + "</td><td>" + rainBadge(st) + "</td></tr>"; }).join("") +
+        '</tbody></table></div><p class="olnote">เรดาร์ Longdo Weather อัปเดตทุก 15 นาที · <button type="button" class="linkbtn" id="toRadar">ดูภาพเรดาร์บนแผนที่ ›</button></p>';
+      $("toRadar").onclick = function () { var b = document.querySelector('#layers [data-l="radar"]'); if (b && b.getAttribute("aria-pressed") !== "true") b.click(); showTab("now", true); setTimeout(function () { $("map").scrollIntoView({ block: "center" }); }, 80); };
+    });
+  }
+
+  /* ---------- ช่วยเหลือ: shelters, parking, relief points (BMA Flood Support, via data/help.json) ---------- */
+  var helpOpenOnly = true, helpMore = false;
+  var DONATE = [
+    { name: "อาคารสำนักการระบายน้ำ ชั้น 1 ศาลาว่าการ กทม. (ดินแดง)", tel: ["0816112878", "0954957960"] },
+    { name: "โรงเรียนฝึกอาชีพกรุงเทพมหานคร (ประเวศ)", tel: ["0894461855", "0959264555"] }
+  ];
+  function fUrl(f) { var t = [f.link, f.additionalDetails, f.routeDetails].filter(Boolean).join(" "), m = t.match(/https?:\/\/\S+/); return m ? m[0] : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(f.name + " เขต" + f.district); }
+  function fNote(f) { var t = [f.additionalDetails, f.routeDetails].filter(Boolean).join(" ").replace(/https?:\/\/\S+/g, "").trim(); return t && !/^ไม่มี$/.test(t) ? t.slice(0, 140) : ""; }
+  function fSt(f) { var s = f.status || ""; return s.indexOf("ใกล้เต็ม") > -1 ? ["warning", "ใกล้เต็ม"] : s.indexOf("เต็ม") > -1 ? ["severe", "เต็ม"] : /(^|[^เ])ปิด/.test(s) ? ["watch", "ปิด"] : ["normal", "ว่าง"]; }
+  function fRow(f) {
+    var st = fSt(f), old = (Date.now() - new Date(f.updatedAt).getTime()) / 3600000 > 24, note = fNote(f), unit = f.unitType || "";
+    return '<div class="hrow"><div class="top"><span class="nm">' + esc(f.name) + '</span><span class="pill lv-' + st[0] + '">' + st[1] + "</span></div>" +
+      '<span class="m">เขต' + esc(f.district) + (f.km != null ? " · " + f.km.toFixed(0) + " กม." : "") +
+      (f.capacity ? " · ใช้แล้ว " + (f.occupied || 0) + "/" + f.capacity + " " + esc(unit) : "") + (old ? ' · <span class="old">ข้อมูลเก่ากว่า 24 ชม.</span>' : "") + "</span>" +
+      (note ? '<span class="m">' + esc(note) + "</span>" : "") +
+      '<a href="' + esc(fUrl(f)) + '" target="_blank" rel="noopener">แผนที่ / นำทาง</a></div>';
+  }
+  function renderHelp() {
+    var el = $("helpBody");
+    var don = '<h3 class="hh">จุดรับบริจาคของ กทม. (24 ชม.)</h3>' + DONATE.map(function (d) { return '<div class="hrow"><span class="nm">' + esc(d.name) + '</span><span class="m">' + d.tel.map(function (t) { return '<a href="tel:' + t + '">' + t.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") + "</a>"; }).join(" · ") + "</span></div>"; }).join("") +
+      '<p class="olnote">รับอาหารแห้ง อาหารปรุงสุก น้ำดื่ม นม นมผงเด็ก อุปกรณ์ทำความสะอาด</p>';
+    if (!HL || !HL.facilities) { el.innerHTML = '<p class="note">ยังไม่มีข้อมูลศูนย์พักพิง ดูที่ <a href="https://floodsupport.bangkok.go.th/" target="_blank" rel="noopener">floodsupport.bangkok.go.th</a></p>' + don; return; }
+    var dk = {}; S.districts.forEach(function (d) { dk[d.name] = d.km; });
+    var all = HL.facilities.map(function (f) { f.km = dk[f.district] != null ? dk[f.district] : null; return f; }).filter(function (f) { return f.km != null && f.km <= 12; })
+      .sort(function (a, b) { return a.km - b.km || (fSt(a)[1] === "เต็ม") - (fSt(b)[1] === "เต็ม") || (b.available || 0) - (a.available || 0); });
+    var sh = all.filter(function (f) { return f.category === "ศูนย์พักพิงชั่วคราว"; }), shOpen = sh.filter(function (f) { return fSt(f)[1] !== "เต็ม" && fSt(f)[1] !== "ปิด"; });
+    var list = helpOpenOnly ? shOpen : sh, show = helpMore ? list : list.slice(0, 8);
+    var park = all.filter(function (f) { return f.category === "จุดจอดรถ"; }), other = all.filter(function (f) { return f.category !== "ศูนย์พักพิงชั่วคราว" && f.category !== "จุดจอดรถ"; });
+    var free = shOpen.reduce(function (a, f) { return a + (f.available || 0); }, 0);
+    el.innerHTML = '<div class="olhead"><span class="t">ศูนย์พักพิงในรัศมี ~12 กม.: ยังรับได้ ' + shOpen.length + " จาก " + sh.length + " แห่ง</span>" +
+        '<span class="m">ว่างรวมราว ' + free.toLocaleString() + " ที่ · ข้อมูล กทม. ณ " + dm(new Date(new Date(HL.generatedAt || HL.fetched_at).getTime() + 7 * 3600000).toISOString()) + "</span></div>" +
+      '<div class="sortrow"><button type="button" id="hOpen" aria-pressed="' + helpOpenOnly + '">เฉพาะที่ยังว่าง</button><button type="button" id="hAll" aria-pressed="' + !helpOpenOnly + '">ทั้งหมด</button></div>' +
+      show.map(fRow).join("") +
+      (list.length > show.length ? '<button type="button" class="maplink" id="hMore">ดูอีก ' + (list.length - show.length) + " แห่ง</button>" : "") +
+      '<h3 class="hh">จุดจอดรถหนีน้ำ</h3>' + (park.length ? park.map(fRow).join("") : '<p class="note">ไม่มีในรัศมีนี้</p>') +
+      (other.length ? '<h3 class="hh">จุดแจกอาหาร / แพทย์ / รถรับส่ง</h3>' + other.map(fRow).join("") : '<p class="note">ระบบ กทม. ยังไม่มีจุดแจกอาหาร/รถรับส่งในรัศมีนี้</p>') +
+      don + '<p class="olnote">ข้อมูลจาก <a href="https://floodsupport.bangkok.go.th/" target="_blank" rel="noopener">BMA Flood Support</a> · สถานะอาจไม่ทันที โทรยืนยันก่อนเดินทาง · กทม. 1555</p>';
+    $("hOpen").onclick = function () { helpOpenOnly = true; helpMore = false; renderHelp(); };
+    $("hAll").onclick = function () { helpOpenOnly = false; helpMore = false; renderHelp(); };
+    if ($("hMore")) $("hMore").onclick = function () { helpMore = true; renderHelp(); };
   }
 
   /* ---------- province list ---------- */
@@ -396,6 +510,7 @@
   $("rSlider").oninput = function () { stopRadar(); showFrame(+this.value); };
   $("reload").onclick = load;
 
+  showTab(location.hash.slice(1));
   showHome();
   load();
   setInterval(function () { if (!document.hidden) { load(); if (map.hasLayer(G.radar)) loadRadar(); } }, C.refresh_min * 60000);

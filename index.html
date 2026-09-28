@@ -19,14 +19,31 @@
     <div class="stamprow"><span class="stamp" id="stamp">กำลังโหลด…</span><button type="button" id="reload" class="linkbtn">โหลดใหม่</button></div>
   </header>
 
-  <section class="home-card" id="homeCard" aria-live="polite"></section>
+  <nav class="tabbar" role="tablist" aria-label="หน้า">
+    <button type="button" role="tab" data-tab="now" aria-selected="true">สถานการณ์</button>
+    <button type="button" role="tab" data-tab="fc" aria-selected="false">พยากรณ์</button>
+    <button type="button" role="tab" data-tab="help" aria-selected="false">ช่วยเหลือ</button>
+  </nav>
 
-  <section id="outlook" hidden>
+  <section class="home-card" id="homeCard" aria-live="polite" data-view="now"></section>
+  <div class="teasers" id="teasers" data-view="now"></div>
+
+  <section data-view="fc">
+    <h2>ฝนรอบ ATA · ตอนนี้ และ 30 นาทีข้างหน้า</h2>
+    <div id="rainArea" class="olbody"><p class="note">กำลังโหลด…</p></div>
+  </section>
+
+  <section id="outlook" hidden data-view="fc">
     <h2>แนวโน้มระดับน้ำคลองรอบ ATA · 12 / 24 / 48 ชม.</h2>
     <div id="olBody" class="olbody"></div>
   </section>
 
-  <section>
+  <section data-view="help">
+    <h2>ศูนย์พักพิง · จุดจอดรถ · จุดช่วยเหลือ ใกล้ ATA</h2>
+    <div id="helpBody" class="olbody"><p class="note">กำลังโหลด…</p></div>
+  </section>
+
+  <section data-view="now">
     <h2>แผนที่</h2>
     <div class="chips views" role="group" aria-label="มุมมอง">
       <button type="button" id="vHome" aria-pressed="true">รอบ ATA</button>
@@ -55,35 +72,37 @@
     <p class="note">พื้นเขต: แดง อันตราย · ส้ม เตือนภัย · เหลือง เฝ้าระวัง · จุดวัดน้ำ (แสดงเฉพาะที่ผิดปกติ): แดง ล้นตลิ่ง · ส้ม เกินวิกฤต · เหลือง เฝ้าระวัง · ☂ = กล้องที่เรดาร์เห็นฝนตอนนี้ · จุดม่วง = ประชาชนแจ้ง Traffy (รัศมี <span id="tfkm"></span> กม. จาก ATA)</p>
   </section>
 
-  <section>
+  <section data-view="now">
     <h2>ถนนน้ำท่วม · จัดตามความรุนแรง</h2>
     <div id="rlist" class="rlist"></div>
     <p class="note">ระดับ: ผ่านไม่ได้ = ปิด/รถไม่สามารถสัญจร หรือลึก ≥40 ซม. · วิกฤต = รถเล็กผ่านไม่ได้ ลึก 30–39 ซม. หรือกรมทางหลวงแจ้งผ่านไม่ได้ที่จุดกลับรถ · ท่วมขัง = มีน้ำบนผิวจราจร · ผ่านได้ = ตื้นหรือกำลังลด · จัดระดับอัตโนมัติจากข้อความรายงาน</p>
   </section>
 
-  <section>
+  <section data-view="now">
     <h2>พื้นที่ผิดปกติ · เลือกจังหวัด</h2>
     <div class="tabs" role="group" aria-label="จังหวัด" id="provTabs"></div>
     <div class="sortrow">เรียงตาม <button type="button" id="sNear" aria-pressed="true">ใกล้ ATA</button><button type="button" id="sSev" aria-pressed="false">รุนแรงสุด</button></div>
     <div id="dlist"></div>
   </section>
 
-  <section>
+  <section data-view="help">
+    <h2>เบอร์ฉุกเฉิน</h2>
+    <div class="phones">
+      <a class="ph" href="tel:1555"><span class="num">1555</span><small>สายด่วน กทม.</small></a>
+      <a class="ph" href="tel:199"><span class="num">199</span><small>ดับเพลิงและกู้ภัย</small></a>
+      <a class="ph" href="tel:1784"><span class="num">1784</span><small>ปภ. สาธารณภัย</small></a>
+    </div>
+  </section>
+
+  <section data-view="help">
     <h2>แหล่งข้อมูลสด</h2>
     <div class="grid2">
       <a class="btn" href="https://weather.bangkok.go.th/" target="_blank" rel="noopener"><b>สำนักการระบายน้ำ กทม.</b><small>ระดับน้ำคลอง ฝนรายเขต</small></a>
       <a class="btn" href="https://traffic.longdo.com/" target="_blank" rel="noopener"><b>Longdo Traffic</b><small>น้ำท่วมบนถนน กล้อง</small></a>
       <a class="btn" href="https://www.thaiwater.net/" target="_blank" rel="noopener"><b>ThaiWater</b><small>ระดับน้ำแม่น้ำทั้งประเทศ</small></a>
       <a class="btn" href="https://www.tmd.go.th/" target="_blank" rel="noopener"><b>กรมอุตุนิยมวิทยา</b><small>ประกาศเตือนภัย</small></a>
-    </div>
-  </section>
-
-  <section>
-    <h2>เบอร์ฉุกเฉิน</h2>
-    <div class="phones">
-      <a class="ph" href="tel:1555"><span class="num">1555</span><small>สายด่วน กทม.</small></a>
-      <a class="ph" href="tel:199"><span class="num">199</span><small>ดับเพลิงและกู้ภัย</small></a>
-      <a class="ph" href="tel:1784"><span class="num">1784</span><small>ปภ. สาธารณภัย</small></a>
+      <a class="btn" href="https://floodsupport.bangkok.go.th/" target="_blank" rel="noopener"><b>BMA Flood Support</b><small>ศูนย์พักพิง จุดจอดรถ ทางการ</small></a>
+      <a class="btn" href="https://flood.autobahn.bot/" target="_blank" rel="noopener"><b>BKK FloodWatch 2026</b><small>พยากรณ์ระดับน้ำคลอง/แม่น้ำ</small></a>
     </div>
   </section>
 
