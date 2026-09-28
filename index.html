@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ATA Flood Watch</title>
+<meta name="description" content="สถานการณ์น้ำท่วมรอบออฟฟิศ ATA และกรุงเทพฯ–ปริมณฑล อัปเดตทุก 15 นาที">
+<meta name="theme-color" content="#0b6e8a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ATA Flood Watch</h1>
+    <p class="sub">น้ำท่วมรอบออฟฟิศ ATA และกรุงเทพฯ–ปริมณฑล · ระดับน้ำคลอง ถนน กล้อง รายงานประชาชน</p>
+    <div class="stamprow"><span class="stamp" id="stamp">กำลังโหลด…</span><button type="button" id="reload" class="linkbtn">โหลดใหม่</button></div>
+  </header>
+
+  <section class="home-card" id="homeCard" aria-live="polite"></section>
+
+  <section>
+    <h2>แผนที่</h2>
+    <div class="chips views" role="group" aria-label="มุมมอง">
+      <button type="button" id="vHome" aria-pressed="true">รอบ ATA</button>
+      <button type="button" id="vAll" aria-pressed="false">กรุงเทพฯ–ปริมณฑล</button>
+      <button type="button" id="vMe" aria-pressed="false">ตำแหน่งฉัน</button>
+    </div>
+    <div class="chips" role="group" aria-label="ชั้นข้อมูล" id="layers">
+      <button type="button" data-l="dist" aria-pressed="true"><span class="sw sq" style="background:var(--f-sev)"></span>ระดับเขต</button>
+      <button type="button" data-l="canal" aria-pressed="true"><span class="sw ln" style="background:var(--canal)"></span>คลอง</button>
+      <button type="button" data-l="gauge" aria-pressed="true"><span class="sw" style="background:var(--warn)"></span>ระดับน้ำ</button>
+      <button type="button" data-l="ev" aria-pressed="true"><span class="sw sq" style="background:var(--sev)"></span>น้ำท่วมบนถนน</button>
+      <button type="button" data-l="tf" aria-pressed="true"><span class="sw" style="background:var(--traffy)"></span>Traffy</button>
+      <button type="button" data-l="cam" aria-pressed="true"><span class="sw sq" style="background:var(--cam)"></span>กล้อง</button>
+      <button type="button" data-l="radar" aria-pressed="false"><span class="sw" style="background:#3aa0ff"></span>เรดาร์ฝน</button>
+    </div>
+    <div id="map" role="region" aria-label="แผนที่น้ำท่วม"></div>
+    <div class="info" id="info"></div>
+    <p class="note">พื้นเขต: แดง อันตราย · ส้ม เตือนภัย · เหลือง เฝ้าระวัง · จุดวัดน้ำ: แดง ล้นตลิ่ง · ส้ม เกินวิกฤต · เหลือง เฝ้าระวัง · เขียว ปกติ · จุดม่วง = ประชาชนแจ้ง Traffy (รัศมี <span id="tfkm"></span> กม. จาก ATA)</p>
+  </section>
+
+  <section>
+    <h2>รายพื้นที่ · เลือกจังหวัด</h2>
+    <div class="tabs" role="group" aria-label="จังหวัด" id="provTabs"></div>
+    <div class="sortrow">เรียงตาม <button type="button" id="sNear" aria-pressed="true">ใกล้ ATA</button><button type="button" id="sSev" aria-pressed="false">รุนแรงสุด</button></div>
+    <div id="dlist"></div>
+  </section>
+
+  <section>
+    <h2>แหล่งข้อมูลสด</h2>
+    <div class="grid2">
+      <a class="btn" href="https://weather.bangkok.go.th/" target="_blank" rel="noopener"><b>สำนักการระบายน้ำ กทม.</b><small>ระดับน้ำคลอง ฝนรายเขต</small></a>
+      <a class="btn" href="https://traffic.longdo.com/" target="_blank" rel="noopener"><b>Longdo Traffic</b><small>น้ำท่วมบนถนน กล้อง</small></a>
+      <a class="btn" href="https://www.thaiwater.net/" target="_blank" rel="noopener"><b>ThaiWater</b><small>ระดับน้ำแม่น้ำทั้งประเทศ</small></a>
+      <a class="btn" href="https://www.tmd.go.th/" target="_blank" rel="noopener"><b>กรมอุตุนิยมวิทยา</b><small>ประกาศเตือนภัย</small></a>
+    </div>
+  </section>
+
+  <section>
+    <h2>เบอร์ฉุกเฉิน</h2>
+    <div class="phones">
+      <a class="ph" href="tel:1555"><span class="num">1555</span><small>สายด่วน กทม.</small></a>
+      <a class="ph" href="tel:199"><span class="num">199</span><small>ดับเพลิงและกู้ภัย</small></a>
+      <a class="ph" href="tel:1784"><span class="num">1784</span><small>ปภ. สาธารณภัย</small></a>
+    </div>
+  </section>
+
+  <footer class="note">
+    ระดับเขตคำนวณด้วยกฎอย่างง่าย ไม่ใช่ประกาศทางการ โปรดตรวจสอบกับ กทม. / ปภ. / กรมอุตุฯ ·
+    ข้อมูล: ThaiWater (สสน.), สำนักการระบายน้ำ กทม., Longdo Traffic / iTIC / กรมทางหลวง, Traffy Fondue, Open-Meteo, RainViewer ·
+    ตัวดึงข้อมูลพัฒนาต่อจาก <a href="https://github.com/icyice1998/Flood" target="_blank" rel="noopener">Floodwatcher</a> (MIT) ·
+    แผนที่ ขอบเขต คลอง © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> ·
+    AT Technology Anywhere Co., Ltd.
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

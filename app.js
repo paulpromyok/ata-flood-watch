@@ -1,0 +1,219 @@
+/* ATA Flood Watch — front end. Reads data/*.json produced by fetch_data.py (GitHub Actions). */
+(function () {
+  "use strict";
+  var C = window.FW_CONFIG, H = C.home;
+  var LV = { severe: 3, warning: 2, watch: 1, normal: 0 };
+  var ST = { overbank: 4, critical: 3, warning: 2, normal: 1, unknown: 0 };
+  var STTH = { overbank: "ล้นตลิ่ง", critical: "เกินวิกฤต", warning: "เฝ้าระวัง", normal: "ปกติ", unknown: "ไม่มีเกณฑ์" };
+  var TFTH = { new: "รอรับเรื่อง", working: "กำลังดำเนินการ", done: "เสร็จแล้ว", finish: "เสร็จแล้ว", forward: "ส่งต่อ" };
+  var PROVS = ["กรุงเทพมหานคร", "สมุทรปราการ", "นนทบุรี", "ปทุมธานี", "สมุทรสาคร"];
+  var css = getComputedStyle(document.documentElement);
+  function cv(n) { return css.getPropertyValue(n).trim(); }
+  var COL = { overbank: cv("--sev"), critical: cv("--warn"), warning: cv("--watch"), normal: cv("--ok"), unknown: cv("--unk"),
+    red: cv("--sev"), orange: cv("--warn"), green: cv("--ok"), traffy: cv("--traffy"), canal: cv("--canal") };
+  var FILL = { severe: "#c62b20", warning: "#d9731a", watch: "#c8a000", normal: "transparent" };
+  var FOP = { severe: .28, warning: .22, watch: .16, normal: 0 };
+
+  function km(a, b, c, d) { var r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * 6371 * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); }
+  function esc(t) { var d = document.createElement("div"); d.textContent = t == null ? "" : String(t); return d.innerHTML; }
+  function hm(iso) { return iso ? iso.slice(11, 16) + " น." : ""; }
+  var TM = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+  function dm(iso) { return iso ? (+iso.slice(8, 10)) + " " + TM[+iso.slice(5, 7)] + " " + hm(iso) : ""; }
+  function f2(v) { return v == null ? "–" : (+v).toFixed(2); }
+  function gmaps(lat, lon) { return "https://www.google.com/maps/@" + lat.toFixed(5) + "," + lon.toFixed(5) + ",16z/data=!5m1!1e1"; }
+  function $(id) { return document.getElementById(id); }
+  $("tfkm").textContent = C.traffy_km;
+
+  /* ---------- map ---------- */
+  var map = L.map("map", { preferCanvas: true, zoomControl: true }).setView([H.lat, H.lon], 12);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+  var G = { dist: L.layerGroup().addTo(map), canal: L.layerGroup().addTo(map), tf: L.layerGroup().addTo(map), gauge: L.layerGroup().addTo(map),
+    ev: L.layerGroup().addTo(map), cam: L.layerGroup().addTo(map), radar: L.layerGroup() };
+  C.rings_km.forEach(function (r) {
+    L.circle([H.lat, H.lon], { radius: r * 1000, color: cv("--accent"), weight: 1.5, dashArray: "6 6", fill: false, interactive: false }).addTo(map);
+    L.marker([H.lat + r / 110.57, H.lon], { interactive: false, icon: L.divIcon({ className: "", html: '<span class="fw-ata-lbl">' + r + ' กม.</span>', iconSize: [40, 14], iconAnchor: [20, 14] }) }).addTo(map);
+  });
+  L.marker([H.lat, H.lon], { icon: L.divIcon({ className: "", html: '<div class="fw-ata" style="width:16px;height:16px"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), zIndexOffset: 1000 })
+    .on("click", showHome).addTo(map);
+  L.marker([H.lat, H.lon], { interactive: false, icon: L.divIcon({ className: "", html: '<span class="fw-ata-lbl">' + esc(H.short) + "</span>", iconSize: [40, 14], iconAnchor: [20, 26] }) }).addTo(map);
+
+  var info = $("info"), S = null, DM = {}, TR = { reports: [] }, CANALS = null, DISTS = null, meMarker = null;
+  function card(html) { info.innerHTML = html; }
+  function lk(lat, lon, extra) { return '<span class="links"><a href="' + gmaps(lat, lon) + '" target="_blank" rel="noopener">Google Maps จราจร</a>' + (extra || "") + "</span>"; }
+  function showHome() {
+    card('<span class="t">' + esc(H.name) + '</span><span class="m">' + esc(H.addr) + '</span><span class="m">แตะจุดบนแผนที่เพื่อดูรายละเอียด · แตะพื้นเขตเพื่อดูระดับเตือนภัย</span>' +
+      lk(H.lat, H.lon, '<a href="https://www.rainviewer.com/map.html?loc=' + H.lat.toFixed(3) + "," + H.lon.toFixed(3) + ',11" target="_blank" rel="noopener">เรดาร์ฝน</a>'));
+  }
+  function showGauge(d) {
+    card('<span class="t">' + esc(d.name) + '</span><span class="m">' + esc(d.canal || "") + " · " + esc(d.district || d.amphoe) + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) + "</span>" +
+      '<span>น้ำ <span class="mono">' + f2(d.value) + "</span>" + (d.bank != null ? ' · ตลิ่ง <span class="mono">' + f2(d.bank) + "</span>" : "") + ' ม.รทก. · <span class="st-' + d.st + '">' + STTH[d.st] + "</span>" +
+      (d.to_bank_m != null ? ' <span class="m">(ห่างตลิ่ง ' + f2(d.to_bank_m) + " ม.)</span>" : "") + "</span>" +
+      '<span class="m">วัดเมื่อ ' + dm(d.time) + (d.stale ? " · ค่าเก่า" : "") + "</span>" + lk(d.lat, d.lon));
+  }
+  function showEvent(d) {
+    card('<span class="t">' + esc(d.title) + '</span><span class="m">' + esc(d.text) + '</span><span class="m">' + dm(d.start) + " · " + esc(d.source) +
+      (d.depth_cm ? " · ลึก " + d.depth_cm + " ซม." : "") + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) + "</span>" + lk(d.lat, d.lon));
+  }
+  function showCam(d) {
+    card('<span class="t">กล้อง: ' + esc(d.title) + '</span><span class="m">' + esc(d.org) + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) + (d.live ? "" : " · อาจไม่ออนไลน์") + "</span>" +
+      lk(d.lat, d.lon, '<a href="' + esc(d.link) + '" target="_blank" rel="noopener">ดูภาพกล้อง</a>'));
+  }
+  function showTf(d) {
+    card('<span class="t">Traffy · ' + esc(TFTH[d.state] || d.state) + "</span>" +
+      (d.photo && TR.photo_base ? '<img src="' + esc(TR.photo_base + d.photo) + '" alt="" loading="lazy" style="max-width:100%;border-radius:8px;max-height:220px;object-fit:cover">' : "") +
+      "<span>" + esc(d.text) + '</span><span class="m">' + dm(d.time) + " · เขต" + esc(d.district) + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) + "</span>" +
+      lk(d.lat, d.lon, TR.link_base ? '<a href="' + esc(TR.link_base + d.id) + '" target="_blank" rel="noopener">ดูเรื่องเต็ม</a>' : ""));
+  }
+  function showDist(d) {
+    card('<span class="t">' + esc(d.name) + ' <span class="pill lv-' + d.level + '">' + esc(d.level_th) + '</span></span><span class="m">' + esc(d.province) + " · " + d.km.toFixed(1) + " กม. จาก " + esc(H.short) +
+      " · จุดวัดน้ำ " + d.g.length + " · น้ำท่วมบนถนน " + d.e.length + " · Traffy " + d.tf + "</span><span>" + esc(d.advice) + "</span>");
+  }
+
+  /* ---------- data ---------- */
+  var BASE = (C.data_base && C.data_base.indexOf("/OWNER/") < 0) ? C.data_base : "data/";
+  if (BASE === "data/" && C.data_base) console.warn("config.js: set data_base (replace OWNER) so data stays fresh on Vercel");
+  function j(url) { return fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error(url + " " + r.status); return r.json(); }); }
+  function load() {
+    return Promise.all([j(BASE + "latest.json"), j(BASE + "traffy.json").catch(function () { return { reports: [] }; }),
+      CANALS ? Promise.resolve(CANALS) : j(BASE + "canals.geojson"), DISTS ? Promise.resolve(DISTS) : j(BASE + "districts.geojson")])
+      .then(function (r) { S = r[0]; TR = r[1] || { reports: [] }; CANALS = r[2]; DISTS = r[3]; render(); })
+      .catch(function (e) { $("stamp").textContent = "โหลดข้อมูลไม่สำเร็จ ลองกดโหลดใหม่"; $("stamp").className = "stamp old"; console.error(e); });
+  }
+
+  function render() {
+    var gen = S.generated_at, age = (Date.now() - new Date(gen).getTime()) / 60000;
+    $("stamp").textContent = "ข้อมูล ณ " + dm(gen) + (age > C.stale_min ? " · เก่า " + Math.round(age) + " นาที" : "");
+    $("stamp").className = "stamp" + (age > C.stale_min ? " old" : "");
+    DM = {};
+    S.districts.forEach(function (d) { d.km = km(H.lat, H.lon, d.lat, d.lon); d.g = []; d.e = []; d.c = []; d.tf = 0; DM[d.id] = d; });
+    var gauges = [].concat(S.stations.canal || [], S.stations.river || []).filter(function (s) { return s.lat && !((s.status == null || s.status === "unknown") && (s.flags || []).indexOf("stale") > -1); });
+    gauges.forEach(function (s) { s.st = s.status || "unknown"; s.stale = (s.flags || []).indexOf("stale") > -1; s.km = km(H.lat, H.lon, s.lat, s.lon); var d = DM[s.district] || DM[s.amphoe]; if (d) d.g.push(s); });
+    (S.events || []).forEach(function (e) { e.km = km(H.lat, H.lon, e.lat, e.lon); if (DM[e.district]) DM[e.district].e.push(e); });
+    (S.cameras || []).forEach(function (c) { c.km = km(H.lat, H.lon, c.lat, c.lon); if (DM[c.district]) DM[c.district].c.push(c); });
+    var tr = (TR.reports || []);
+    tr.forEach(function (t) { t.km = km(H.lat, H.lon, t.lat, t.lon); if (DM[t.district]) DM[t.district].tf++; });
+    var rain = {};
+    (S.stations.rain || []).forEach(function (s) { var k = s.district || s.amphoe; if (s.rain_24h != null && (!rain[k] || s.rain_24h > rain[k][0])) rain[k] = [s.rain_24h, s.name]; });
+    var canalStatus = {}; (S.canals || []).forEach(function (c) { canalStatus[c.name] = c.status; });
+
+    Object.keys(G).forEach(function (k) { if (k !== "radar") G[k].clearLayers(); });
+    L.geoJSON(DISTS, {
+      style: function (f) { var d = DM[f.properties.id], lv = d ? d.level : "normal"; return { color: "#8aa0a6", weight: 1, fillColor: FILL[lv], fillOpacity: FOP[lv] }; },
+      onEachFeature: function (f, l) { l.on("click", function () { var d = DM[f.properties.id]; if (d) showDist(d); }); }
+    }).addTo(G.dist);
+    L.geoJSON(CANALS, {
+      filter: function (f) { var s = canalStatus[f.properties.name]; return f.properties.kind === "river" || !!s; },
+      style: function (f) { var s = canalStatus[f.properties.name]; return { color: s === "overbank" ? COL.overbank : s === "critical" ? COL.critical : COL.canal, weight: f.properties.kind === "river" ? 3 : (s === "overbank" || s === "critical") ? 3 : 2, opacity: .85 }; },
+      onEachFeature: function (f, l) { l.bindTooltip(f.properties.name + (canalStatus[f.properties.name] ? " · " + (STTH[canalStatus[f.properties.name]] || "") : ""), { sticky: true }); }
+    }).addTo(G.canal);
+    tr.filter(function (t) { return t.km <= C.traffy_km; }).forEach(function (t) {
+      L.circleMarker([t.lat, t.lon], { radius: 4, color: COL.traffy, weight: 0, fillColor: COL.traffy, fillOpacity: .55 }).on("click", function () { showTf(t); }).addTo(G.tf);
+    });
+    gauges.sort(function (a, b) { return ST[a.st] - ST[b.st]; }).forEach(function (s) {
+      L.circleMarker([s.lat, s.lon], { radius: ST[s.st] >= 3 ? 7 : 5, color: "#fff", weight: 1.5, fillColor: COL[s.st], fillOpacity: s.stale ? .5 : 1 }).on("click", function () { showGauge(s); }).addTo(G.gauge);
+    });
+    (S.events || []).forEach(function (e) {
+      L.marker([e.lat, e.lon], { icon: L.divIcon({ className: "", html: '<div class="fw-ev" style="width:11px;height:11px;background:' + (COL[e.color] || COL.orange) + '"></div>', iconSize: [11, 11], iconAnchor: [6, 6] }) })
+        .on("click", function () { showEvent(e); }).addTo(G.ev);
+    });
+    (S.cameras || []).forEach(function (c) {
+      L.marker([c.lat, c.lon], { icon: L.divIcon({ className: "", html: '<div class="fw-cam" style="width:20px;height:16px">▶</div>', iconSize: [20, 16], iconAnchor: [10, 8] }) })
+        .on("click", function () { showCam(c); }).addTo(G.cam);
+    });
+
+    homeCard(gauges, tr);
+    S._rain = rain; S._tr = tr;
+    renderList();
+  }
+
+  function homeCard(gauges, tr) {
+    var R = C.summary_km, d = DM[H.district];
+    var g = gauges.filter(function (x) { return x.km <= R && ST[x.st] >= 3 && !x.stale; }).length;
+    var e = (S.events || []).filter(function (x) { return x.km <= R; }).length;
+    var t = tr.filter(function (x) { return x.km <= R; }).length;
+    var cam = (S.cameras || []).slice().sort(function (a, b) { return a.km - b.km; })[0];
+    var hot = S.districts.filter(function (x) { return x.km <= 8 && x.level === "severe"; }).sort(function (a, b) { return a.km - b.km; });
+    $("homeCard").innerHTML = '<div class="row"><span class="t">ออฟฟิศ ' + esc(H.short) + " · เขต" + esc(H.district) + "</span>" + (d ? '<span class="pill lv-' + d.level + '">' + esc(d.level_th) + "</span>" : "") + "</div>" +
+      '<div class="kpis"><div class="kpi"><b>' + g + "</b><small>จุดวัดน้ำเกินวิกฤต ใน " + R + ' กม.</small></div><div class="kpi"><b>' + e + "</b><small>จุดน้ำท่วมบนถนน ใน " + R + ' กม.</small></div>' +
+      '<div class="kpi"><b>' + t + "</b><small>ประชาชนแจ้ง Traffy ใน " + R + ' กม. (24 ชม.)</small></div><div class="kpi"><b>' + (cam ? cam.km.toFixed(1) : "–") + "</b><small>กม. ถึงกล้องใกล้สุด</small></div></div>" +
+      (hot.length ? '<div class="near">เขตระดับอันตรายใกล้ออฟฟิศ: ' + hot.map(function (x) { return "<b>" + esc(x.name) + "</b> " + x.km.toFixed(0) + " กม."; }).join(" · ") + "</div>" : "") +
+      (d ? '<div class="adv">' + esc(d.advice) + "</div>" : "");
+  }
+
+  /* ---------- province list ---------- */
+  var curP = PROVS[0], sortBy = "near", openSet = {}; openSet[H.district] = true;
+  PROVS.forEach(function (p) {
+    var b = document.createElement("button"); b.type = "button"; b.textContent = p === "กรุงเทพมหานคร" ? "กรุงเทพฯ" : p; b.setAttribute("aria-pressed", p === curP);
+    b.onclick = function () { curP = p; $("provTabs").querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); renderList(); };
+    $("provTabs").appendChild(b);
+  });
+  $("sNear").onclick = function () { sortBy = "near"; this.setAttribute("aria-pressed", true); $("sSev").setAttribute("aria-pressed", false); renderList(); };
+  $("sSev").onclick = function () { sortBy = "sev"; this.setAttribute("aria-pressed", true); $("sNear").setAttribute("aria-pressed", false); renderList(); };
+
+  function renderList() {
+    if (!S) return;
+    var ds = S.districts.filter(function (d) { return d.province === curP; });
+    ds.sort(sortBy === "near" ? function (a, b) { return a.km - b.km; } : function (a, b) { return (LV[b.level] - LV[a.level]) || (b.score - a.score) || (a.km - b.km); });
+    var el = $("dlist"); el.innerHTML = "";
+    ds.forEach(function (d) {
+      var hotG = d.g.filter(function (x) { return ST[x.st] >= 3 && !x.stale; }).length, rn = S._rain[d.id];
+      var ev = [];["measured", "forecast", "reported", "confirmed"].forEach(function (k) { (d.evidence[k] || []).forEach(function (x) { if (x.points > 0 || k === "measured") ev.push(x.text); }); });
+      var gs = d.g.slice().sort(function (a, b) { return ST[b.st] - ST[a.st]; });
+      var tfs = S._tr.filter(function (t) { return t.district === d.id; }).sort(function (a, b) { return a.time < b.time ? 1 : -1; }).slice(0, 5);
+      var det = document.createElement("details"); det.className = "d"; det.open = !!openSet[d.id];
+      det.addEventListener("toggle", function () { openSet[d.id] = det.open; });
+      det.innerHTML = '<summary><span class="nm">' + esc(d.name) + (d.id === H.district ? " · " + esc(H.short) : "") + '</span><span class="pill lv-' + d.level + '">' + esc(d.level_th) + "</span>" +
+        '<span class="cnt">' + d.km.toFixed(1) + " กม. · วัดน้ำเกินวิกฤต " + hotG + "/" + d.g.length + " · น้ำท่วมบนถนน " + d.e.length + " · Traffy " + d.tf + (d.c.length ? " · กล้อง " + d.c.length : "") + "</span></summary>" +
+        '<div class="body"><div class="adv">' + esc(d.advice) + "</div>" +
+        (ev.length ? "<div><h3>หลักฐาน</h3><ul>" + ev.slice(0, 6).map(function (x) { return "<li>" + esc(x.length > 240 ? x.slice(0, 240) + "…" : x) + "</li>"; }).join("") + "</ul></div>" : "") +
+        (rn ? '<div class="m">ฝนสะสม 24 ชม. สูงสุด <span class="mono">' + rn[0] + "</span> มม. ที่ " + esc(rn[1]) + "</div>" : "") +
+        (gs.length ? '<div><h3>จุดวัดระดับน้ำ</h3><div class="tbl"><table><thead><tr><th>จุด</th><th class="num">น้ำ</th><th class="num">ตลิ่ง</th><th>สถานะ</th></tr></thead><tbody>' +
+          gs.map(function (x) { return "<tr><td>" + esc(x.name) + "<br><small>" + esc(x.canal || "") + " · " + hm(x.time) + (x.stale ? " ค่าเก่า" : "") + '</small></td><td class="num">' + f2(x.value) + '</td><td class="num">' + f2(x.bank) + '</td><td class="st-' + x.st + '">' + STTH[x.st] + "</td></tr>"; }).join("") + "</tbody></table></div></div>" : "") +
+        (d.e.length ? "<div><h3>น้ำท่วมบนถนน (Longdo / iTIC / กรมทางหลวง)</h3><ul>" + d.e.slice().sort(function (a, b) { return a.start < b.start ? 1 : -1; }).map(function (x) { return "<li>" + esc(x.title) + (x.depth_cm ? " · ลึก " + x.depth_cm + " ซม." : "") + " <small>" + hm(x.start) + " · " + esc(x.source) + "</small></li>"; }).join("") + "</ul></div>" : "") +
+        (d.c.length ? "<div><h3>กล้อง</h3><ul>" + d.c.map(function (x) { return '<li><a href="' + esc(x.link) + '" target="_blank" rel="noopener">' + esc(x.title) + "</a> <small>" + esc(x.org) + "</small></li>"; }).join("") + "</ul></div>" : "") +
+        (tfs.length ? "<div><h3>Traffy ล่าสุด</h3><ul>" + tfs.map(function (x) { return '<li><a href="' + esc((TR.link_base || "") + x.id) + '" target="_blank" rel="noopener">' + esc((x.text || "").slice(0, 90)) + "…</a> <small>" + hm(x.time) + " · " + esc(TFTH[x.state] || x.state) + "</small></li>"; }).join("") + "</ul></div>" : "") +
+        "</div>";
+      var btn = document.createElement("button"); btn.type = "button"; btn.className = "maplink"; btn.textContent = "ดูบนแผนที่";
+      btn.onclick = function () { setView(null); map.setView([d.lat, d.lon], 14); showDist(d); $("map").scrollIntoView({ behavior: "smooth", block: "center" }); };
+      det.querySelector(".body").appendChild(btn);
+      el.appendChild(det);
+    });
+  }
+
+  /* ---------- controls ---------- */
+  function setView(v) { ["vHome", "vAll", "vMe"].forEach(function (id) { $(id).setAttribute("aria-pressed", id === v); }); }
+  $("vHome").onclick = function () { setView("vHome"); map.setView([H.lat, H.lon], 12); showHome(); };
+  $("vAll").onclick = function () { setView("vAll"); map.setView([13.78, 100.58], 10); };
+  $("vMe").onclick = function () {
+    if (!navigator.geolocation) { card('<span class="t">เบราว์เซอร์นี้หาตำแหน่งไม่ได้</span>'); return; }
+    setView("vMe");
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var ll = [p.coords.latitude, p.coords.longitude];
+      if (meMarker) map.removeLayer(meMarker);
+      meMarker = L.marker(ll, { icon: L.divIcon({ className: "", html: '<div class="fw-me" style="width:16px;height:16px"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
+      map.setView(ll, 15);
+      var near = S ? [].concat(S.stations.canal || [], S.stations.river || []).filter(function (s) { return s.lat; }).map(function (s) { return [km(ll[0], ll[1], s.lat, s.lon), s]; }).sort(function (a, b) { return a[0] - b[0]; })[0] : null;
+      card('<span class="t">ตำแหน่งของคุณ</span><span class="m">ห่างจาก ' + esc(H.short) + " " + km(ll[0], ll[1], H.lat, H.lon).toFixed(1) + " กม." +
+        (near ? " · จุดวัดน้ำใกล้สุด " + esc(near[1].name) + " (" + near[0].toFixed(1) + " กม., " + (STTH[near[1].status] || "") + ")" : "") + "</span>" + lk(ll[0], ll[1]));
+    }, function () { card('<span class="t">ยังไม่ได้รับอนุญาตให้ใช้ตำแหน่ง</span><span class="m">อนุญาตการเข้าถึงตำแหน่งในเบราว์เซอร์ แล้วกดอีกครั้ง</span>'); }, { enableHighAccuracy: true, timeout: 10000 });
+  };
+  document.querySelectorAll("#layers button").forEach(function (b) {
+    b.onclick = function () {
+      var on = b.getAttribute("aria-pressed") !== "true", l = b.dataset.l; b.setAttribute("aria-pressed", on);
+      if (on) { map.addLayer(G[l]); if (l === "radar") loadRadar(); } else map.removeLayer(G[l]);
+    };
+  });
+  function loadRadar() {
+    fetch("https://api.rainviewer.com/public/weather-maps.json").then(function (r) { return r.json(); }).then(function (m) {
+      var f = m.radar && m.radar.past && m.radar.past[m.radar.past.length - 1]; if (!f) return;
+      G.radar.clearLayers();
+      L.tileLayer(m.host + f.path + "/256/{z}/{x}/{y}/2/1_1.png", { opacity: .55, maxNativeZoom: 7, maxZoom: 19, attribution: "Radar © RainViewer" }).addTo(G.radar);
+    }).catch(function () { card('<span class="t">โหลดเรดาร์ฝนไม่สำเร็จ</span>'); });
+  }
+  $("reload").onclick = load;
+
+  showHome();
+  load();
+  setInterval(function () { if (!document.hidden) load(); }, C.refresh_min * 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && S && (Date.now() - new Date(S.generated_at).getTime()) > C.refresh_min * 60000) load(); });
+})();
