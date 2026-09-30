@@ -7,11 +7,12 @@ Writes data/road_status.json:
   roads:  [{key, name, level, n, official, depth_cm, latest, lat, lon, ids, uturn, lines}]
           one entry per road stretch, lines = the OSM geometry within ~400 m of its reports
 
-Levels (highest wins):
-  4 ผ่านไม่ได้   road closed by flood, "รถไม่สามารถสัญจร/ผ่านไม่ได้", depth >= 40 cm
-  3 วิกฤต        red report, small cars cannot pass, depth 30-39 cm, DOH "ผ่านไม่ได้" at a U-turn only
-  2 ท่วมขัง       flooding on the road, depth 15-29 cm, "ท่วมสูง / ทุกช่องทาง"
-  1 ผ่านได้       DOH "(ผ่านได้)", depth < 15 cm, receding
+Levels (highest wins). Depth bands follow the vehicle limits used by Floodboard:
+motorcycle <= 15 cm, sedan <= 20 cm, pickup <= 40 cm, truck <= 60 cm, nothing passes above 60 cm.
+  4 ผ่านไม่ได้   road closed by flood, "รถไม่สามารถสัญจร/ผ่านไม่ได้", depth > 60 cm
+  3 วิกฤต        red report, small cars cannot pass, depth 21-60 cm, DOH "ผ่านไม่ได้" at a U-turn only
+  2 ท่วมขัง       flooding on the road, depth 16-20 cm, "ท่วมสูง / ทุกช่องทาง"
+  1 ผ่านได้       DOH "(ผ่านได้)", depth <= 15 cm, receding
 Stdlib only.
 """
 import json
@@ -60,11 +61,11 @@ def classify(e):
     blocked = bool(re.search(r"ไม่สามารถ(?:สัญจร|ผ่าน)|สัญจรไม่ได้|ผ่านไม่ได้|รถผ่านไม่ได้", text))
     if e.get("kind") == "roadclosed" and not flood_related:
         return None, d, uturn            # construction closures etc. are not flood reports
-    if (e.get("kind") == "roadclosed") or (d and d >= 40) or (blocked and not small_car and not uturn):
+    if (e.get("kind") == "roadclosed") or (d and d > 60) or (blocked and not small_car and not uturn):
         lv = 4
-    elif e.get("color") == "red" or small_car or (d and d >= 30) or blocked:
+    elif e.get("color") == "red" or small_car or (d and d > 20) or blocked:
         lv = 3
-    elif re.search(r"\(ผ่านได้\)|ลดลง|คลี่คลาย", text) or e.get("color") == "green" or (d is not None and d < 15):
+    elif re.search(r"\(ผ่านได้\)|ลดลง|คลี่คลาย", text) or e.get("color") == "green" or (d is not None and d <= 15):
         lv = 1
     else:
         lv = 2
