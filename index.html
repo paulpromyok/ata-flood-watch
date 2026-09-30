@@ -22,6 +22,7 @@
   <nav class="tabbar" role="tablist" aria-label="หน้า">
     <button type="button" role="tab" data-tab="now" aria-selected="true">สถานการณ์</button>
     <button type="button" role="tab" data-tab="fc" aria-selected="false">พยากรณ์</button>
+    <button type="button" role="tab" data-tab="canal" aria-selected="false">น้ำในคลอง</button>
     <button type="button" role="tab" data-tab="help" aria-selected="false">ช่วยเหลือ</button>
   </nav>
 
@@ -36,6 +37,26 @@
   <section id="outlook" hidden data-view="fc">
     <h2>แนวโน้มระดับน้ำคลองรอบ ATA · 12 / 24 / 48 ชม.</h2>
     <div id="olBody" class="olbody"></div>
+  </section>
+
+  <section data-view="fc">
+    <h2>จุดวัดระดับน้ำทั้งหมด · แตะเพื่อดูรายละเอียด</h2>
+    <div id="glist" class="olbody"></div>
+  </section>
+
+  <section data-view="canal">
+    <h2>น้ำในคลอง · แผนที่ตามสเกลจริง</h2>
+    <div class="chips views" id="cmode" role="group" aria-label="สีคลอง"><button type="button" data-m="bma" aria-pressed="true">สีตามเกณฑ์ กทม.</button><button type="button" data-m="bank" aria-pressed="false">สีตามระยะถึงตลิ่ง</button></div>
+    <div class="chips" id="clayers" role="group" aria-label="ชั้นข้อมูล">
+      <button type="button" data-k="gauge" aria-pressed="true">จุดวัด</button>
+      <button type="button" data-k="flood" aria-pressed="true">น้ำท่วมถนน (Longdo/iTIC)</button>
+      <button type="button" data-k="other" aria-pressed="false">อุบัติเหตุ/เหตุอื่น</button>
+      <button type="button" data-k="gistda" aria-pressed="true">น้ำท่วมจากดาวเทียม (GISTDA)</button>
+      <button type="button" data-k="traffy" aria-pressed="false">Traffy</button>
+    </div>
+    <div id="cmap" class="cmap" role="region" aria-label="แผนที่น้ำในคลอง"></div>
+    <div class="clegend" id="clegend"></div>
+    <p class="note" id="cnote"></p>
   </section>
 
   <section data-view="help">
@@ -58,8 +79,12 @@
       <button type="button" data-l="tf" aria-pressed="true"><span class="sw" style="background:var(--traffy)"></span>Traffy</button>
       <button type="button" data-l="cam" aria-pressed="true"><span class="sw sq" style="background:var(--cam)"></span>กล้อง</button>
       <button type="button" data-l="radar" aria-pressed="false"><span class="sw" style="background:#3aa0ff"></span>เรดาร์ฝน</button>
+      <button type="button" data-l="fb" aria-pressed="true"><span class="sw ln" style="background:repeating-linear-gradient(90deg,#d9731a 0 6px,transparent 6px 10px)"></span>Floodboard</button>
+      <button type="button" data-l="rp" aria-pressed="true"><span class="sw" style="background:#7a0010"></span>รายงานทีม</button>
     </div>
-    <label class="sevsel">ถนนน้ำท่วมที่แสดง <select id="sevMin"><option value="4">เฉพาะผ่านไม่ได้</option><option value="3" selected>วิกฤตขึ้นไป</option><option value="2">ท่วมขังขึ้นไป</option><option value="1">ทั้งหมด</option></select></label>
+    <div class="actbar"><button type="button" id="btnRoute" class="act">เส้นทางเลี่ยงน้ำ</button><button type="button" id="btnReport" class="act">แจ้งน้ำท่วม</button></div>
+    <div class="sevsel"><label>ตรวจสำหรับ <select id="veh"><option value="">ทุกประเภท (ตามระดับ)</option><option value="moto">มอเตอร์ไซค์ ≤15 ซม.</option><option value="sedan">รถเก๋ง ≤20 ซม.</option><option value="pickup">กระบะ/รถสูง ≤40 ซม.</option><option value="truck">รถบรรทุก ≤60 ซม.</option></select></label>
+    <label>ระดับที่แสดง <select id="sevMin"><option value="4">เฉพาะผ่านไม่ได้</option><option value="3" selected>วิกฤตขึ้นไป</option><option value="2">ท่วมขังขึ้นไป</option><option value="1">ทั้งหมด</option></select></label></div>
     <div id="map" role="region" aria-label="แผนที่น้ำท่วม"></div>
     <div class="radarbar" id="radarBar" hidden>
       <button type="button" id="rPlay">▶ เล่น</button>
@@ -69,13 +94,13 @@
       <a id="rSrc" href="https://weather.longdo.com/" target="_blank" rel="noopener">Longdo Weather</a>
     </div>
     <div class="info" id="info"></div>
-    <p class="note">พื้นเขต: แดง อันตราย · ส้ม เตือนภัย · เหลือง เฝ้าระวัง · จุดวัดน้ำ (แสดงเฉพาะที่ผิดปกติ): แดง ล้นตลิ่ง · ส้ม เกินวิกฤต · เหลือง เฝ้าระวัง · ☂ = กล้องที่เรดาร์เห็นฝนตอนนี้ · จุดม่วง = ประชาชนแจ้ง Traffy (รัศมี <span id="tfkm"></span> กม. จาก ATA)</p>
+    <p class="note"><b>ถนนที่ไม่มีสีไม่ได้แปลว่าแห้ง</b> แค่ยังไม่มีรายงาน · เส้นประ = ข้อมูล Floodboard · แตะจุดใดก็ได้บนแผนที่เพื่อประเมินความเสี่ยงรอบจุดนั้น · แตะหมุดเพื่อดูรายละเอียดและกราฟ · พื้นเขต: แดง อันตราย · ส้ม เตือนภัย · เหลือง เฝ้าระวัง · จุดวัดน้ำ (แสดงเฉพาะที่ผิดปกติ): แดง ล้นตลิ่ง · ส้ม เกินวิกฤต · เหลือง เฝ้าระวัง · ☂ = กล้องที่เรดาร์เห็นฝนตอนนี้ · จุดม่วง = ประชาชนแจ้ง Traffy (รัศมี <span id="tfkm"></span> กม. จาก ATA)</p>
   </section>
 
   <section data-view="now">
     <h2>ถนนน้ำท่วม · จัดตามความรุนแรง</h2>
     <div id="rlist" class="rlist"></div>
-    <p class="note">ระดับ: ผ่านไม่ได้ = ปิด/รถไม่สามารถสัญจร หรือลึก ≥40 ซม. · วิกฤต = รถเล็กผ่านไม่ได้ ลึก 30–39 ซม. หรือกรมทางหลวงแจ้งผ่านไม่ได้ที่จุดกลับรถ · ท่วมขัง = มีน้ำบนผิวจราจร · ผ่านได้ = ตื้นหรือกำลังลด · จัดระดับอัตโนมัติจากข้อความรายงาน</p>
+    <p class="note">ระดับ: ผ่านไม่ได้ = ปิด/รถไม่สามารถสัญจร หรือลึกเกิน 60 ซม. · วิกฤต = รถเล็กผ่านไม่ได้ ลึก 21–60 ซม. หรือกรมทางหลวงแจ้งผ่านไม่ได้ที่จุดกลับรถ · ท่วมขัง = ลึก 16–20 ซม. หรือมีน้ำบนผิวจราจร · ผ่านได้ = ≤15 ซม. หรือกำลังลด · จัดระดับอัตโนมัติจากข้อความรายงาน · <b>ถนนที่ไม่มีในรายการไม่ได้แปลว่าแห้ง</b></p>
   </section>
 
   <section data-view="now">
@@ -108,12 +133,16 @@
 
   <footer class="note">
     ระดับเขตคำนวณด้วยกฎอย่างง่าย ไม่ใช่ประกาศทางการ โปรดตรวจสอบกับ กทม. / ปภ. / กรมอุตุฯ ·
-    ข้อมูล: ThaiWater (สสน.), สำนักการระบายน้ำ กทม., Longdo Traffic / iTIC / กรมทางหลวง, Traffy Fondue, Open-Meteo, เรดาร์ฝน Longdo Weather / RainViewer ·
+    ข้อมูล: ThaiWater (สสน.), สำนักการระบายน้ำ กทม., Longdo Traffic / iTIC / กรมทางหลวง, Traffy Fondue, Open-Meteo, เรดาร์ฝน Longdo Weather / RainViewer, ถนนน้ำท่วม <a href="https://www.floodboard.org" target="_blank" rel="noopener">Floodboard</a> (CC BY 4.0), เส้นทาง Longdo / OSRM ·
     ตัวดึงข้อมูลพัฒนาต่อจาก <a href="https://github.com/icyice1998/Flood" target="_blank" rel="noopener">Floodwatcher</a> (MIT) ·
     แผนที่ ขอบเขต คลอง © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> ·
     AT Technology Anywhere Co., Ltd.
   </footer>
 </div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="sheet-bg" id="sheetBg" hidden></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="รายละเอียด" hidden><div class="grab"></div><div id="sheetBody"></div></section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="config.js"></script>

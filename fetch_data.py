@@ -271,8 +271,23 @@ def fetch_waterlevel(districts):
     return out
 
 
+BKFW = os.path.join(HERE, "data", "bkfw_live.json")
+
+
+def load_bkfw():
+    """Latest BMA/HII readings as seen by BKK FloodWatch (written by scripts/fetch_outlook.py).
+    The ThaiWater copy of the BMA canal feed sometimes stops updating for days while BKK FloodWatch
+    still has fresh readings; a stale gauge borrows the newer reading of the same code."""
+    try:
+        d = json.load(open(BKFW, encoding="utf-8"))
+        return d.get("s") or {}
+    except (OSError, ValueError):
+        return {}
+
+
 def fetch_canals(districts, previous):
     sid, url = "bma-canal", THAIWATER + "canal_waterlevel"
+    bk, n_bk = load_bkfw(), 0
     try:
         data = json.loads(http_get(url))["data"]
     except Exception as e:  # noqa: BLE001
@@ -300,6 +315,13 @@ def fetch_canals(districts, previous):
             bank = None
         if raw != {"bank": bank, "critical": crit, "warning": warn}:
             flags.append("threshold_suspect")
+        alt = bk.get(sid_)
+        if alt and alt[0] is not None and alt[1] and (ts is None or age_h(ts) > STALE_HOURS or v is None):
+            ats = local_ts(alt[1])
+            if ats is not None and (ts is None or ats > ts) and age_h(ats) <= STALE_HOURS:
+                v, ts = alt[0], ats
+                flags.append("via_bkfw")
+                n_bk += 1
         if v is None:
             flags.append("missing_value")
         if ts is None or age_h(ts) > STALE_HOURS:
@@ -333,7 +355,8 @@ def fetch_canals(districts, previous):
         })
     times = [s["time"] for s in out if s["time"]]
     record(sid, "สำนักการระบายน้ำ กทม. ระดับน้ำคลอง (ผ่าน ThaiWater)", url, True, len(out),
-           max(times) if times else None, stale=sum("stale" in s["flags"] for s in out))
+           max(times) if times else None, stale=sum("stale" in s["flags"] for s in out),
+           extra={"via_bkfw": n_bk} if n_bk else None)
     return out
 
 

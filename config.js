@@ -18,6 +18,9 @@ window.FW_CONFIG = {
   traffy_km: 10,            // Traffy reports shown on the map within this radius
   refresh_min: 5,           // how often the open page re-reads data/latest.json
   stale_min: 60,            // warn when data is older than this
+  // Team flood reports: Vercel function api/report.js, storing into a PRIVATE repo (see docs/REPORTS.md).
+  // Leave "" until the repo and token are set up; the report button then links to Floodboard / Traffy.
+  report_api: "",
   // Longdo Map API key (api.longdo.com/console). Enables Longdo rain radar (zoom 9, 15-min),
   // rain now / +15 / +30 min at the office, and cameras where it is raining. Leave "" to use RainViewer.
   // In the Longdo console, limit this key's Domain to ata-flood-watch.vercel.app.
