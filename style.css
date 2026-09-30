@@ -242,3 +242,4 @@ button.primary:disabled{opacity:.6}
 @media (min-width:900px){.sheet{left:auto;right:16px;bottom:16px;border-radius:16px;width:440px;max-height:calc(100vh - 32px)}}
 @media (max-width:420px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.cbase{filter:grayscale(1) brightness(1.1) contrast(.8)}

@@ -689,7 +689,7 @@
     if (!S) return;
     if (!CM) {
       CM = L.map("cmap", { preferCanvas: true, renderer: L.canvas({ tolerance: 8 }) }).setView([H.lat, H.lon], 12);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd", attribution: "© OpenStreetMap contributors © CARTO" }).addTo(CM);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, className: "cbase", attribution: "© OpenStreetMap contributors" }).addTo(CM);
       ["net", "lit", "gauge", "flood", "other", "gistda", "traffy"].forEach(function (k) { CLY[k] = L.layerGroup().addTo(CM); });
       L.marker([H.lat, H.lon], { interactive: false, icon: L.divIcon({ className: "", html: '<div class="fw-ata" style="width:14px;height:14px"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) }).addTo(CM);
       document.querySelectorAll("#cmode button").forEach(function (b) { b.onclick = function () { cMode = b.dataset.m; document.querySelectorAll("#cmode button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); drawCanal(); }; });
