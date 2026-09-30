@@ -35,6 +35,7 @@ jobs:
       - name: Fetch every 15 minutes
         env:
           FLOODWATCHER_SOCIAL_FEEDS: ${{ vars.FLOODWATCHER_SOCIAL_FEEDS }}
+          GISTDA_API_KEY: ${{ secrets.GISTDA_API_KEY }}
         run: |
           git config user.name "ata-floodwatch-bot"
           git config user.email "action@github.com"
@@ -46,9 +47,13 @@ jobs:
               python scripts/build_road_status.py || echo "::warning::road status failed"
               python scripts/fetch_outlook.py || echo "::warning::outlook failed"
               python scripts/fetch_help.py || echo "::warning::help failed"
+              python scripts/fetch_gistda.py || echo "::warning::gistda failed"
               git add data/latest.json data/traffy.json data/road_status.json
               [ -f data/outlook.json ] && git add data/outlook.json
+              [ -f data/gauge_detail.json ] && git add data/gauge_detail.json
+              [ -f data/bkfw_live.json ] && git add data/bkfw_live.json
               [ -f data/help.json ] && git add data/help.json
+              [ -f data/gistda_flood.geojson ] && git add data/gistda_flood.geojson
               if ! git diff --cached --quiet; then
                 git commit -q -m "data: $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
                 for i in 1 2 3; do

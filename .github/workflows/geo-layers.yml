@@ -9,6 +9,7 @@ on:
   push:
     paths:
       - build_geo.py
+      - scripts/build_canal_net.py
       - .github/workflows/geo-layers.yml
 
 permissions:
@@ -28,11 +29,14 @@ jobs:
       - name: Build canal and road layers
         run: python build_geo.py
 
+      - name: Build canal network (all waterways + gauge links) for the canal tab
+        run: python scripts/build_canal_net.py
+
       - name: Commit layers
         run: |
           git config user.name "ata-floodwatch-bot"
           git config user.email "action@github.com"
-          git add data/canals.geojson data/roads.geojson
+          git add data/canals.geojson data/roads.geojson data/canal_net.json
           git diff --cached --quiet && exit 0
           git commit -m "map layers: rebuild canals and roads from OpenStreetMap [skip ci]"
           for i in 1 2 3; do
